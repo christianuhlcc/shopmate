@@ -1,0 +1,4 @@
+version: '3.9'
+# Full docker-compose definition added in Phase 10.
+# Services: postgres, backend, frontend, nginx
+services: {}

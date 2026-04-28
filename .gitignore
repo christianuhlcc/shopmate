@@ -1,0 +1,40 @@
+# Java / Gradle
+build/
+.gradle/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+out/
+*.iml
+.idea/
+*.iws
+*.ipr
+
+# Generated code — spec is the source of truth
+backend/build/generated/
+frontend/src/api/schema.ts
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+frontend/.env
+frontend/.env.local
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Docker volumes
+postgres-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
