@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/shopmate}
+    username: ${DB_USER:shopmate}
+    password: ${DB_PASSWORD:shopmate}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:placeholder}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder}
+            scope: openid,profile,email
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com
+      resourceserver:
+        jwt:
+          issuer-uri: https://accounts.google.com
+
+shopmate:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-change-me-must-be-32-chars}
+  frontend:
+    base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+
+server:
+  port: 8080
