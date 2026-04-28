@@ -1,0 +1,198 @@
+package com.shopmate.adapter.in.web;
+
+import com.shopmate.domain.model.ItemChange;
+import com.shopmate.domain.model.ItemField;
+import com.shopmate.domain.model.ShoppingItem;
+import com.shopmate.domain.model.ShoppingList;
+import com.shopmate.domain.model.User;
+import com.shopmate.domain.port.in.ShoppingListUseCase;
+import com.shopmate.domain.port.out.UserRepository;
+import com.shopmate.generated.api.ItemsApi;
+import com.shopmate.generated.api.ListsApi;
+import com.shopmate.generated.api.MembersApi;
+import com.shopmate.generated.model.AddItemRequest;
+import com.shopmate.generated.model.AddMemberRequest;
+import com.shopmate.generated.model.CreateListRequest;
+import com.shopmate.generated.model.ItemChangeRequest;
+import com.shopmate.generated.model.LwwFieldBoolean;
+import com.shopmate.generated.model.LwwFieldString;
+import com.shopmate.generated.model.ShoppingListWithItems;
+import com.shopmate.generated.model.UserProfile;
+import com.shopmate.infrastructure.security.SecurityContextHelper;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
+
+    private final ShoppingListUseCase shoppingListUseCase;
+    private final SecurityContextHelper securityContextHelper;
+    private final UserRepository userRepository;
+
+    public ShoppingListController(ShoppingListUseCase shoppingListUseCase,
+                                   SecurityContextHelper securityContextHelper,
+                                   UserRepository userRepository) {
+        this.shoppingListUseCase = shoppingListUseCase;
+        this.securityContextHelper = securityContextHelper;
+        this.userRepository = userRepository;
+    }
+
+    @Override
+    public ResponseEntity<List<com.shopmate.generated.model.ShoppingList>> getLists() {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        List<ShoppingList> lists = shoppingListUseCase.getListsForUser(currentUserId);
+        List<com.shopmate.generated.model.ShoppingList> dtos = lists.stream()
+                .map(this::toDto)
+                .toList();
+        return ResponseEntity.ok(dtos);
+    }
+
+    @Override
+    public ResponseEntity<com.shopmate.generated.model.ShoppingList> createList(
+            @Valid @RequestBody CreateListRequest createListRequest) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ShoppingList created = shoppingListUseCase.createList(currentUserId, createListRequest.getName());
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
+    }
+
+    @Override
+    public ResponseEntity<ShoppingListWithItems> getList(@PathVariable UUID listId) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ShoppingList list = shoppingListUseCase.getList(listId, currentUserId);
+        return ResponseEntity.ok(toDtoWithItems(list));
+    }
+
+    @Override
+    public ResponseEntity<com.shopmate.generated.model.ShoppingItem> addItem(
+            @PathVariable UUID listId,
+            @Valid @RequestBody AddItemRequest addItemRequest) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ShoppingList updated = shoppingListUseCase.addItem(
+                listId,
+                addItemRequest.getName(),
+                addItemRequest.getQuantity() != null ? addItemRequest.getQuantity() : "1",
+                currentUserId);
+        // Find the newly added item: it is the one with the highest createdAt proxy —
+        // since addItem returns the full list, find the item whose name matches.
+        com.shopmate.generated.model.ShoppingItem addedItem = updated.items().values().stream()
+                .filter(i -> i.name().value().equals(addItemRequest.getName()))
+                .findFirst()
+                .map(this::toItemDto)
+                .orElseThrow();
+        return ResponseEntity.status(HttpStatus.CREATED).body(addedItem);
+    }
+
+    @Override
+    public ResponseEntity<com.shopmate.generated.model.ShoppingItem> updateItem(
+            @PathVariable UUID listId,
+            @PathVariable UUID itemId,
+            @Valid @RequestBody ItemChangeRequest itemChangeRequest) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ItemField domainField = mapField(itemChangeRequest.getField());
+        ItemChange change = new ItemChange(
+                itemId,
+                listId,
+                domainField,
+                itemChangeRequest.getValue(),
+                System.currentTimeMillis(),
+                currentUserId);
+        ShoppingList updated = shoppingListUseCase.applyItemChange(listId, change, currentUserId);
+        com.shopmate.generated.model.ShoppingItem itemDto = toItemDto(updated.items().get(itemId));
+        return ResponseEntity.ok(itemDto);
+    }
+
+    @Override
+    public ResponseEntity<Void> deleteItem(@PathVariable UUID listId, @PathVariable UUID itemId) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        shoppingListUseCase.deleteItem(listId, itemId, currentUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<com.shopmate.generated.model.ShoppingList> addMember(
+            @PathVariable UUID listId,
+            @Valid @RequestBody AddMemberRequest addMemberRequest) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ShoppingList updated = shoppingListUseCase.addMember(listId, addMemberRequest.getEmail(), currentUserId);
+        return ResponseEntity.ok(toDto(updated));
+    }
+
+    @Override
+    public ResponseEntity<Void> removeMember(@PathVariable UUID listId, @PathVariable UUID userId) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        shoppingListUseCase.removeMember(listId, userId, currentUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Mapping helpers ---
+
+    private com.shopmate.generated.model.ShoppingList toDto(ShoppingList list) {
+        List<UserProfile> memberProfiles = buildMemberProfiles(list);
+        return new com.shopmate.generated.model.ShoppingList(
+                list.id(),
+                list.name(),
+                list.ownerId(),
+                memberProfiles,
+                OffsetDateTime.ofInstant(list.createdAt(), ZoneOffset.UTC));
+    }
+
+    private ShoppingListWithItems toDtoWithItems(ShoppingList list) {
+        List<UserProfile> memberProfiles = buildMemberProfiles(list);
+        List<com.shopmate.generated.model.ShoppingItem> items = list.activeItems().stream()
+                .map(this::toItemDto)
+                .toList();
+        return new ShoppingListWithItems(
+                list.id(),
+                list.name(),
+                list.ownerId(),
+                memberProfiles,
+                OffsetDateTime.ofInstant(list.createdAt(), ZoneOffset.UTC),
+                items);
+    }
+
+    private com.shopmate.generated.model.ShoppingItem toItemDto(ShoppingItem item) {
+        return new com.shopmate.generated.model.ShoppingItem(
+                item.id(),
+                item.listId(),
+                toLwwStringDto(item.name()),
+                toLwwStringDto(item.quantity()),
+                toLwwBooleanDto(item.checked()),
+                toLwwBooleanDto(item.deleted()),
+                toLwwStringDto(item.sortKey()));
+    }
+
+    private LwwFieldString toLwwStringDto(com.shopmate.domain.model.LwwField<String> f) {
+        return new LwwFieldString(f.value(), f.timestamp(), f.modifiedBy());
+    }
+
+    private LwwFieldBoolean toLwwBooleanDto(com.shopmate.domain.model.LwwField<Boolean> f) {
+        return new LwwFieldBoolean(f.value(), f.timestamp(), f.modifiedBy());
+    }
+
+    private List<UserProfile> buildMemberProfiles(ShoppingList list) {
+        return list.memberIds().stream()
+                .map(memberId -> userRepository.findById(memberId)
+                        .map(u -> new UserProfile(u.id(), u.email(), u.displayName()).avatarUrl(u.avatarUrl()))
+                        .orElseGet(() -> new UserProfile(memberId, "", "")))
+                .toList();
+    }
+
+    private ItemField mapField(com.shopmate.generated.model.ItemField generated) {
+        return switch (generated) {
+            case NAME -> ItemField.NAME;
+            case QUANTITY -> ItemField.QUANTITY;
+            case CHECKED -> ItemField.CHECKED;
+            case DELETED -> ItemField.DELETED;
+            case SORT_KEY -> ItemField.SORT_KEY;
+        };
+    }
+}
