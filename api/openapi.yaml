@@ -1,0 +1,581 @@
+openapi: "3.1.0"
+info:
+  title: ShopMate API
+  version: "1.0.0"
+  description: |
+    Collaborative shopping list API with CRDT-based concurrent editing.
+    All timestamps are server-assigned (epoch milliseconds). Clients never supply timestamps.
+  contact:
+    name: ShopMate
+    email: uhl.christian@googlemail.com
+
+tags:
+  - name: Auth
+    description: Authentication and token exchange
+  - name: Users
+    description: User profile operations
+  - name: Lists
+    description: Shopping list management
+  - name: Items
+    description: Shopping item CRDT mutations
+  - name: Members
+    description: List membership management
+  - name: Events
+    description: Real-time SSE event streaming
+
+servers:
+  - url: /api
+
+security:
+  - bearerAuth: []
+
+paths:
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getCurrentUser
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/exchange:
+    post:
+      tags: [Auth]
+      operationId: exchangeAuthCode
+      summary: Exchange a short-lived auth code for a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCodeRequest'
+      responses:
+        "200":
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /lists:
+    get:
+      tags: [Lists]
+      operationId: getLists
+      summary: Get all shopping lists for the current user
+      responses:
+        "200":
+          description: List of shopping lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShoppingList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Lists]
+      operationId: createList
+      summary: Create a new shopping list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListRequest'
+      responses:
+        "201":
+          description: Created list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingList'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /lists/{listId}:
+    get:
+      tags: [Lists]
+      operationId: getList
+      summary: Get a shopping list with all its items
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        "200":
+          description: Shopping list with items
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingListWithItems'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /lists/{listId}/items:
+    post:
+      tags: [Items]
+      operationId: addItem
+      summary: Add a new item to a shopping list
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddItemRequest'
+      responses:
+        "201":
+          description: Created item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingItem'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /lists/{listId}/items/{itemId}:
+    patch:
+      tags: [Items]
+      operationId: updateItem
+      summary: Apply a single-field CRDT change to an item
+      description: |
+        Applies one LWW field mutation. The server assigns the timestamp.
+        Clients must NOT supply timestamps — they are ignored if present.
+        Move operations (SORT_KEY field) must use this endpoint, never delete+reinsert.
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemChangeRequest'
+      responses:
+        "200":
+          description: Updated item after merge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingItem'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Items]
+      operationId: deleteItem
+      summary: Soft-delete an item (sets deleted tombstone)
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        "204":
+          description: Item deleted (tombstoned)
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /lists/{listId}/members:
+    post:
+      tags: [Members]
+      operationId: addMember
+      summary: Share a list with another user by email (owner only)
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        "200":
+          description: Updated list with new member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShoppingList'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /lists/{listId}/members/{userId}:
+    delete:
+      tags: [Members]
+      operationId: removeMember
+      summary: Remove a member from a list (owner only, or self-remove)
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        "204":
+          description: Member removed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /lists/{listId}/sse-token:
+    post:
+      tags: [Events]
+      operationId: getSseToken
+      summary: Get a short-lived token for SSE subscription
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        "200":
+          description: Short-lived SSE token (15-min TTL, scoped to listId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SseTokenResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /lists/{listId}/events:
+    get:
+      tags: [Events]
+      operationId: subscribeToListEvents
+      summary: Subscribe to real-time item change events (SSE)
+      description: |
+        Server-Sent Events stream. Auth via ?token= query parameter because
+        the browser EventSource API cannot set custom headers.
+        Token must be obtained from POST /lists/{listId}/sse-token first.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Short-lived SSE token from /sse-token endpoint
+      responses:
+        "200":
+          description: SSE stream of ItemChangeEvent objects
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/ItemChangeEvent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ListId:
+      name: listId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    UnprocessableEntity:
+      description: Business rule violation (e.g. list is full)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    UserProfile:
+      type: object
+      required: [id, email, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+
+    ShoppingList:
+      type: object
+      required: [id, name, ownerId, members, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        ownerId:
+          type: string
+          format: uuid
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserProfile'
+        createdAt:
+          type: string
+          format: date-time
+
+    ShoppingListWithItems:
+      allOf:
+        - $ref: '#/components/schemas/ShoppingList'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              maxItems: 100
+              items:
+                $ref: '#/components/schemas/ShoppingItem'
+
+    LwwFieldString:
+      type: object
+      required: [value, timestamp, modifiedBy]
+      properties:
+        value:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+          description: Server-assigned epoch milliseconds
+        modifiedBy:
+          type: string
+          format: uuid
+
+    LwwFieldBoolean:
+      type: object
+      required: [value, timestamp, modifiedBy]
+      properties:
+        value:
+          type: boolean
+        timestamp:
+          type: integer
+          format: int64
+        modifiedBy:
+          type: string
+          format: uuid
+
+    ShoppingItem:
+      type: object
+      required: [id, listId, name, quantity, checked, deleted, sortKey]
+      properties:
+        id:
+          type: string
+          format: uuid
+        listId:
+          type: string
+          format: uuid
+        name:
+          allOf:
+            - $ref: '#/components/schemas/LwwFieldString'
+          description: Item name; value maxLength 100
+        quantity:
+          $ref: '#/components/schemas/LwwFieldString'
+        checked:
+          $ref: '#/components/schemas/LwwFieldBoolean'
+        deleted:
+          $ref: '#/components/schemas/LwwFieldBoolean'
+        sortKey:
+          allOf:
+            - $ref: '#/components/schemas/LwwFieldString'
+          description: Fractional index for display ordering. Update via PATCH with field=SORT_KEY.
+
+    ItemChangeRequest:
+      type: object
+      required: [field, value, modifiedBy]
+      description: |
+        Single-field LWW mutation. Server assigns timestamp — do not include timestamp in request.
+        For SORT_KEY changes (moves), value must be a valid fractional index string.
+        For NAME changes, value maxLength is 100.
+      properties:
+        field:
+          $ref: '#/components/schemas/ItemField'
+        value:
+          type: string
+          maxLength: 500
+          description: Serialised value. Boolean fields use "true"/"false". Name field max 100 chars.
+        modifiedBy:
+          type: string
+          format: uuid
+
+    ItemChangeEvent:
+      type: object
+      required: [itemId, listId, field, value, timestamp, modifiedBy]
+      description: SSE payload broadcast to all subscribers after a successful mutation.
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        listId:
+          type: string
+          format: uuid
+        field:
+          $ref: '#/components/schemas/ItemField'
+        value:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+          description: Server-assigned timestamp. Read-only for clients.
+        modifiedBy:
+          type: string
+          format: uuid
+
+    ItemField:
+      type: string
+      enum: [NAME, QUANTITY, CHECKED, DELETED, SORT_KEY]
+
+    AddItemRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        quantity:
+          type: string
+          maxLength: 100
+          default: "1"
+
+    CreateListRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    AddMemberRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    AuthCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    TokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Application JWT (Bearer token for subsequent requests)
+
+    SseTokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Short-lived SSE token (15-min TTL, scoped to listId)
+
+    ApiError:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: LIST_NOT_FOUND
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
