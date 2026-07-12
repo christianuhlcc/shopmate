@@ -6,11 +6,15 @@ import com.shopmate.generated.api.UsersApi;
 import com.shopmate.generated.model.UserProfile;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+// The OpenAPI spec declares `servers: /api`, but the generator does not include
+// that base path in the interface mappings — it must be added at class level.
 @RestController
+@RequestMapping("/api")
 public class UserController implements UsersApi {
 
     private final UserRepository userRepository;

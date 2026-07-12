@@ -24,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.OffsetDateTime;
@@ -31,7 +32,10 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+// The OpenAPI spec declares `servers: /api`, but the generator does not include
+// that base path in the interface mappings — it must be added at class level.
 @RestController
+@RequestMapping("/api")
 public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
 
     private final ShoppingListUseCase shoppingListUseCase;

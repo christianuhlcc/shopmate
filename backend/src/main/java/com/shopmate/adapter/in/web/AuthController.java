@@ -7,9 +7,13 @@ import com.shopmate.infrastructure.security.AuthCodeService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+// The OpenAPI spec declares `servers: /api`, but the generator does not include
+// that base path in the interface mappings — it must be added at class level.
 @RestController
+@RequestMapping("/api")
 public class AuthController implements AuthApi {
 
     private final AuthCodeService authCodeService;

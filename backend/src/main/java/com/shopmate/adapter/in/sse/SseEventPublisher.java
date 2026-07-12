@@ -2,6 +2,8 @@ package com.shopmate.adapter.in.sse;
 
 import com.shopmate.domain.model.ItemChange;
 import com.shopmate.domain.port.out.EventPublisher;
+import com.shopmate.generated.model.ItemChangeEvent;
+import com.shopmate.generated.model.ItemField;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -20,18 +22,35 @@ public class SseEventPublisher implements EventPublisher {
 
     @Override
     public void publishItemChange(UUID listId, ItemChange change) {
+        ItemChangeEvent event = toEvent(change);
         List<SseEmitter> listEmitters = emitters.getOrDefault(listId, new CopyOnWriteArrayList<>());
         List<SseEmitter> dead = new java.util.ArrayList<>();
         for (SseEmitter emitter : listEmitters) {
             try {
                 emitter.send(SseEmitter.event()
                         .name("item-change")
-                        .data(change));
+                        .data(event));
             } catch (IOException e) {
                 dead.add(emitter);
             }
         }
         listEmitters.removeAll(dead);
+    }
+
+    /**
+     * Maps the domain {@link ItemChange} to the OpenAPI contract shape
+     * ({@code ItemChangeEvent}: itemId, listId, field, value, timestamp, modifiedBy).
+     * The domain record must never be serialized directly — its
+     * {@code serializedValue} component name violates the contract.
+     */
+    static ItemChangeEvent toEvent(ItemChange change) {
+        return new ItemChangeEvent(
+                change.itemId(),
+                change.listId(),
+                ItemField.fromValue(change.field().name()),
+                change.serializedValue(),
+                change.timestamp(),
+                change.modifiedBy());
     }
 
     public SseEmitter subscribe(UUID listId) {

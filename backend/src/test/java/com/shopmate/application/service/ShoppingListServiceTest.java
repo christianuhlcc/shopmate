@@ -16,20 +16,26 @@ import com.shopmate.domain.port.out.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -152,6 +158,54 @@ class ShoppingListServiceTest {
         when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
         assertThatThrownBy(() -> service.removeMember(LIST_ID, OWNER_ID, MEMBER_ID))
             .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void addItemPublishesAllFiveFieldChanges() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList saved = service.addItem(LIST_ID, "Milk", "2", OWNER_ID);
+        ShoppingItem item = saved.items().values().iterator().next();
+
+        ArgumentCaptor<ItemChange> captor = ArgumentCaptor.forClass(ItemChange.class);
+        verify(eventPublisher, times(5)).publishItemChange(eq(LIST_ID), captor.capture());
+
+        List<ItemChange> changes = captor.getAllValues();
+        Map<ItemField, ItemChange> byField = changes.stream()
+            .collect(Collectors.toMap(ItemChange::field, Function.identity()));
+
+        assertThat(byField.keySet()).containsExactlyInAnyOrder(
+            ItemField.NAME, ItemField.QUANTITY, ItemField.CHECKED, ItemField.DELETED, ItemField.SORT_KEY);
+        assertThat(byField.get(ItemField.NAME).serializedValue()).isEqualTo("Milk");
+        assertThat(byField.get(ItemField.QUANTITY).serializedValue()).isEqualTo("2");
+        assertThat(byField.get(ItemField.CHECKED).serializedValue()).isEqualTo("false");
+        assertThat(byField.get(ItemField.DELETED).serializedValue()).isEqualTo("false");
+        assertThat(byField.get(ItemField.SORT_KEY).serializedValue()).isEqualTo(item.sortKey().value());
+
+        // All five changes share the item's server-assigned timestamp, id, and author
+        long ts = item.name().timestamp();
+        assertThat(changes).allSatisfy(c -> {
+            assertThat(c.timestamp()).isEqualTo(ts);
+            assertThat(c.itemId()).isEqualTo(item.id());
+            assertThat(c.listId()).isEqualTo(LIST_ID);
+            assertThat(c.modifiedBy()).isEqualTo(OWNER_ID);
+        });
+    }
+
+    @Test
+    void addItemDefaultsQuantityToOneInBroadcast() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.addItem(LIST_ID, "Eggs", null, OWNER_ID);
+
+        ArgumentCaptor<ItemChange> captor = ArgumentCaptor.forClass(ItemChange.class);
+        verify(eventPublisher, times(5)).publishItemChange(eq(LIST_ID), captor.capture());
+        ItemChange qty = captor.getAllValues().stream()
+            .filter(c -> c.field() == ItemField.QUANTITY)
+            .findFirst().orElseThrow();
+        assertThat(qty.serializedValue()).isEqualTo("1");
     }
 
     @Test

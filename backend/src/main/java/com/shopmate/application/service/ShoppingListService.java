@@ -109,9 +109,17 @@ public class ShoppingListService implements ShoppingListUseCase {
 
         ShoppingList saved = listRepository.save(updated);
 
-        // Broadcast each field as a change event
-        ItemChange nameChange = new ItemChange(itemId, listId, ItemField.NAME, name, ts, requestingUserId);
-        eventPublisher.publishItemChange(listId, nameChange);
+        // Broadcast each field as a change event so subscribers materialize the complete item
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.NAME, nameFld.value(), ts, requestingUserId));
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.QUANTITY, qtyFld.value(), ts, requestingUserId));
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.CHECKED, String.valueOf(checkedFld.value()), ts, requestingUserId));
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.DELETED, String.valueOf(deletedFld.value()), ts, requestingUserId));
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.SORT_KEY, sortKeyFld.value(), ts, requestingUserId));
 
         return saved;
     }
