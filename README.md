@@ -28,7 +28,8 @@ with a UUID tie-break. Ordering uses fractional indexes, so a reorder is always 
 api/            OpenAPI contract (openapi.yaml)
 backend/        Spring Boot service (hexagonal architecture, enforced by ArchUnit)
 frontend/       Vite + React SPA
-docker-compose.yml   (placeholder — full compose stack is planned, see Deployment)
+docker-compose.yml   full stack: postgres + backend + frontend + nginx edge proxy
+nginx/          edge reverse-proxy config used by the compose stack
 PLAN.md         implementation plan and phase status
 CLAUDE.md       developer guide (architecture and layer rules)
 ```
@@ -45,7 +46,19 @@ See `CLAUDE.md` for the layer rules.
 - **PostgreSQL 16** (e.g. `brew install postgresql@16`)
 - Optional for real sign-in: a **Google OAuth2 client** (ID + secret)
 
-## Local setup
+## Quick start (Docker)
+
+```bash
+cp .env.example .env   # fill in real values (or keep dev defaults; Google sign-in needs real credentials)
+docker compose up --build
+```
+
+This starts postgres, the backend, the static frontend, and an nginx edge proxy
+on `http://localhost:3000` (override with `PUBLIC_PORT`). The proxy routes
+`/api`, `/oauth2`, and `/login` to the backend and everything else to the SPA;
+SSE streams pass through unbuffered.
+
+## Local setup (without Docker)
 
 ### 1. Database
 
@@ -143,11 +156,38 @@ Then edit the same list in both windows and watch changes sync live over SSE.
 
 ## Deployment
 
-> `docker-compose.yml` is currently a placeholder. A full compose stack
-> (postgres + backend + frontend + nginx) is planned — see `PLAN.md`. Until
-> then, deploy the two build artifacts directly:
+### Docker Compose (recommended)
 
-### Build
+```bash
+cp .env.example .env   # production values: real Google credentials, strong JWT_SECRET, strong DB_PASSWORD
+docker compose up --build -d
+```
+
+Compose environment knobs:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `PUBLIC_PORT` | Host port the nginx edge proxy listens on | `3000` |
+| `DB_PASSWORD` | Postgres password (also used by the backend) | `shopmate` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google SSO | placeholder |
+| `JWT_SECRET` | Signs app JWTs, min 32 chars | dev secret |
+
+Images:
+- `backend/Dockerfile` — multi-stage Gradle build → JRE 21 Alpine runtime,
+  non-root user, healthcheck on `/actuator/health`
+- `frontend/Dockerfile` — Node build → nginx serving `dist/` with SPA fallback
+- Both builds use the **repo root as context** because they read
+  `api/openapi.yaml` during code generation
+
+For real production, terminate TLS in front of (or instead of) the bundled
+nginx and register `https://<your-domain>/login/oauth2/code/google` as an
+authorized redirect URI in the Google Cloud console. The backend honors
+`X-Forwarded-*` headers (`server.forward-headers-strategy: framework`), so
+OAuth2 redirects use the public URL.
+
+### Manual (without Docker)
+
+#### Build
 
 ```bash
 # Backend — self-contained fat jar
@@ -159,7 +199,7 @@ cd frontend && npm ci && npm run build
 # → dist/
 ```
 
-### Run
+#### Run
 
 1. **Backend:** `java -jar shopmate-backend.jar` with the environment variables
    above set to production values. Requirements:

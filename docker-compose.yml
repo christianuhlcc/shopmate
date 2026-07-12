@@ -1,4 +1,57 @@
-version: '3.9'
-# Full docker-compose definition added in Phase 10.
-# Services: postgres, backend, frontend, nginx
-services: {}
+# ShopMate full stack: postgres + backend + frontend + nginx edge proxy.
+# Public entry point: http://localhost:${PUBLIC_PORT:-3000} (matches the
+# FRONTEND_BASE_URL default and the Google OAuth redirect URI for local dev).
+#
+# Secrets come from .env (copy .env.example). Dev-only defaults below keep the
+# stack bootable without Google credentials (sign-in itself then won't work).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shopmate
+      POSTGRES_USER: shopmate
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shopmate}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopmate -d shopmate"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/shopmate
+      DB_USER: shopmate
+      DB_PASSWORD: ${DB_PASSWORD:-shopmate}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-placeholder}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-placeholder}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-must-be-32-chars}
+      FRONTEND_BASE_URL: http://localhost:${PUBLIC_PORT:-3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${PUBLIC_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+volumes:
+  postgres-data:

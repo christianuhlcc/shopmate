@@ -1,0 +1,9 @@
+# Build context is the repo root for both images — keep it lean.
+.git
+.env
+*.md
+frontend/node_modules
+frontend/dist
+frontend/coverage
+backend/build
+backend/.gradle
