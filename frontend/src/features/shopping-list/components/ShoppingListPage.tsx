@@ -29,7 +29,7 @@ export function ShoppingListPage() {
     if (!shareEmail.trim()) return
     setSharing(true)
     setShareError(null)
-    const { error: apiError } = await apiClient.POST('/api/lists/{listId}/members', {
+    const { error: apiError } = await apiClient.POST('/lists/{listId}/members', {
       params: { path: { listId: listId! } },
       body: { email: shareEmail.trim() },
     })

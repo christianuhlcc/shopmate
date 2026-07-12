@@ -8,7 +8,8 @@ export function setApiToken(token: string | null) {
   _token = token
 }
 
-export const apiClient = createClient<paths>({ baseUrl: '' })
+// The OpenAPI contract mounts all paths under the /api server prefix
+export const apiClient = createClient<paths>({ baseUrl: '/api' })
 
 apiClient.use({
   async onRequest({ request }) {

@@ -17,7 +17,7 @@ export function AuthCallback() {
     }
 
     apiClient
-      .POST('/api/auth/exchange', { body: { code } })
+      .POST('/auth/exchange', { body: { code } })
       .then(async ({ data, error: apiError }) => {
         if (apiError || !data) {
           setError('Authentication failed. Please try again.')

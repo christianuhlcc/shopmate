@@ -60,7 +60,7 @@ describe('AuthCallback', () => {
 
     await waitFor(() => {
       expect(mockApiClient.POST).toHaveBeenCalledWith(
-        '/api/auth/exchange',
+        '/auth/exchange',
         expect.objectContaining({ body: { code: 'my-code' } }),
       )
     })

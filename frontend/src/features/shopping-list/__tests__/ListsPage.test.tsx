@@ -94,7 +94,7 @@ describe('ListsPage', () => {
     await user.click(screen.getByRole('button', { name: /^create$/i }))
 
     await waitFor(() =>
-      expect(mockedApi.POST).toHaveBeenCalledWith('/api/lists', { body: { name: 'Hardware' } }),
+      expect(mockedApi.POST).toHaveBeenCalledWith('/lists', { body: { name: 'Hardware' } }),
     )
     expect(await screen.findByText('List detail')).toBeInTheDocument()
   })

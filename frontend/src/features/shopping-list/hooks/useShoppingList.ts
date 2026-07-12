@@ -47,7 +47,7 @@ export function useShoppingList(listId: string) {
   useEffect(() => {
     setIsLoading(true)
     apiClient
-      .GET('/api/lists/{listId}', { params: { path: { listId } } })
+      .GET('/lists/{listId}', { params: { path: { listId } } })
       .then(({ data, error: apiError }) => {
         if (apiError || !data) {
           setError('Failed to load shopping list.')
@@ -81,7 +81,7 @@ export function useShoppingList(listId: string) {
       if (cancelled) return
       let token: string | undefined
       try {
-        const { data } = await apiClient.POST('/api/lists/{listId}/sse-token', {
+        const { data } = await apiClient.POST('/lists/{listId}/sse-token', {
           params: { path: { listId } },
         })
         token = data?.token
@@ -146,9 +146,9 @@ export function useShoppingList(listId: string) {
 
   const addItem = useCallback(
     async (name: string, quantity?: string) => {
-      const { data, error: apiError } = await apiClient.POST('/api/lists/{listId}/items', {
+      const { data, error: apiError } = await apiClient.POST('/lists/{listId}/items', {
         params: { path: { listId } },
-        body: { name, ...(quantity ? { quantity } : {}) },
+        body: { name, quantity: quantity || '1' },
       })
       if (!apiError && data) {
         // If SSE events raced ahead and already (partially) materialized this
@@ -162,7 +162,7 @@ export function useShoppingList(listId: string) {
   const updateItem = useCallback(
     async (itemId: string, field: ItemField, value: string) => {
       if (!user) return
-      const { data, error: apiError } = await apiClient.PATCH('/api/lists/{listId}/items/{itemId}', {
+      const { data, error: apiError } = await apiClient.PATCH('/lists/{listId}/items/{itemId}', {
         params: { path: { listId, itemId } },
         body: { field, value, modifiedBy: user.id },
       })
@@ -184,7 +184,7 @@ export function useShoppingList(listId: string) {
           i.id === itemId ? { ...i, checked: { ...i.checked, value: checked } } : i,
         ),
       )
-      const { data, error: apiError } = await apiClient.PATCH('/api/lists/{listId}/items/{itemId}', {
+      const { data, error: apiError } = await apiClient.PATCH('/lists/{listId}/items/{itemId}', {
         params: { path: { listId, itemId } },
         body: { field: 'CHECKED', value: String(checked), modifiedBy: user.id },
       })
@@ -204,7 +204,7 @@ export function useShoppingList(listId: string) {
           i.id === itemId ? { ...i, deleted: { ...i.deleted, value: true } } : i,
         ),
       )
-      await apiClient.DELETE('/api/lists/{listId}/items/{itemId}', {
+      await apiClient.DELETE('/lists/{listId}/items/{itemId}', {
         params: { path: { listId, itemId } },
       })
     },
@@ -232,7 +232,7 @@ export function useShoppingList(listId: string) {
         ),
       )
 
-      const { data, error: apiError } = await apiClient.PATCH('/api/lists/{listId}/items/{itemId}', {
+      const { data, error: apiError } = await apiClient.PATCH('/lists/{listId}/items/{itemId}', {
         params: { path: { listId, itemId } },
         body: { field: 'SORT_KEY', value: newKey, modifiedBy: user.id },
       })

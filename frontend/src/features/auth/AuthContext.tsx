@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (stored && !user) {
       setApiToken(stored)
       apiClient
-        .GET('/api/users/me')
+        .GET('/users/me')
         .then(({ data }) => {
           if (data) {
             setUser(data)
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('auth_token', newToken)
     setTokenState(newToken)
     setApiToken(newToken)
-    const { data } = await apiClient.GET('/api/users/me')
+    const { data } = await apiClient.GET('/users/me')
     if (data) {
       setUser(data)
     }

@@ -92,7 +92,7 @@ describe('ShoppingListPage', () => {
     await user.click(shareButtons[shareButtons.length - 1]) // modal submit
 
     await waitFor(() =>
-      expect(mockedApi.POST).toHaveBeenCalledWith('/api/lists/{listId}/members', {
+      expect(mockedApi.POST).toHaveBeenCalledWith('/lists/{listId}/members', {
         params: { path: { listId: 'list-1' } },
         body: { email: 'bob@example.com' },
       }),

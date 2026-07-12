@@ -21,7 +21,7 @@ export function ListsPage() {
 
   useEffect(() => {
     apiClient
-      .GET('/api/lists')
+      .GET('/lists')
       .then(({ data, error: apiError }) => {
         if (apiError || !data) {
           setError('Failed to load lists.')
@@ -37,7 +37,7 @@ export function ListsPage() {
     e.preventDefault()
     if (!newListName.trim()) return
     setCreating(true)
-    const { data, error: apiError } = await apiClient.POST('/api/lists', {
+    const { data, error: apiError } = await apiClient.POST('/lists', {
       body: { name: newListName.trim() },
     })
     setCreating(false)

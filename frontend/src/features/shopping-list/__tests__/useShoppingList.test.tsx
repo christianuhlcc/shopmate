@@ -241,7 +241,7 @@ describe('useShoppingList — optimistic updates never fabricate timestamps', ()
     const newKey = moved.sortKey.value
     expect(newKey).not.toBe('c0')
     expect(mockedApi.PATCH).toHaveBeenCalledWith(
-      '/api/lists/{listId}/items/{itemId}',
+      '/lists/{listId}/items/{itemId}',
       expect.objectContaining({
         body: { field: 'SORT_KEY', value: newKey, modifiedBy: USER_ID },
       }),
