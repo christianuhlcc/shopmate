@@ -53,6 +53,9 @@ cp .env.example .env   # fill in real values (or keep dev defaults; Google sign-
 docker compose up --build
 ```
 
+To make Google sign-in work locally, see
+[docs/google-auth-setup.md](docs/google-auth-setup.md).
+
 This starts postgres, the backend, the static frontend, and an nginx edge proxy
 on `http://localhost:3000` (override with `PUBLIC_PORT`). The proxy routes
 `/api`, `/oauth2`, and `/login` to the backend and everything else to the SPA;
@@ -88,6 +91,9 @@ cp .env.example .env   # then fill in real values
 | `FRONTEND_BASE_URL` | OAuth2 redirect target | `http://localhost:3000` |
 
 Never commit secrets — everything sensitive comes from the environment.
+For obtaining Google credentials and registering the redirect URIs, see
+[docs/google-auth-setup.md](docs/google-auth-setup.md) — note `bootRun` does
+not read `.env`; export the variables (`set -a; source .env; set +a`) first.
 
 ### 3. Backend (port 8080)
 
