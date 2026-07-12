@@ -135,6 +135,10 @@ export function sortItems(items: ShoppingItem[]): ShoppingItem[] {
     .sort((a, b) => {
       if (a.sortKey.value < b.sortKey.value) return -1
       if (a.sortKey.value > b.sortKey.value) return 1
+      // Tie-break on id so concurrent inserts with equal sort keys render in
+      // the same order in every client (must match the backend's tie-break).
+      if (a.id < b.id) return -1
+      if (a.id > b.id) return 1
       return 0
     })
 }

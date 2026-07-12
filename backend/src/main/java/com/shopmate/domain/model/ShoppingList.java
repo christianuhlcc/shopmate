@@ -30,7 +30,11 @@ public record ShoppingList(
     public List<ShoppingItem> activeItems() {
         return items.values().stream()
             .filter(i -> !i.isDeleted())
-            .sorted(Comparator.comparing(i -> i.sortKey().value()))
+            // Tie-break on the id's string form so equal sort keys order the same
+            // everywhere: UUID.compareTo (signed longs) differs from the client's
+            // lexicographic string comparison.
+            .sorted(Comparator.comparing((ShoppingItem i) -> i.sortKey().value())
+                .thenComparing(i -> i.id().toString()))
             .toList();
     }
 

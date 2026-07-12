@@ -279,10 +279,10 @@ describe('sortItems', () => {
     expect(sorted.map((i) => i.id)).toEqual(['1', '2', '3'])
   })
 
-  it('keeps relative order stable for equal sort keys', () => {
+  it('breaks equal sort keys by id so all clients order ties identically', () => {
     const items: ShoppingItem[] = [
-      makeItem({ id: 'x', sortKey: makeStringField('m', 100, USER_A) }),
       makeItem({ id: 'y', sortKey: makeStringField('m', 100, USER_A) }),
+      makeItem({ id: 'x', sortKey: makeStringField('m', 100, USER_A) }),
     ]
     const sorted = sortItems(items)
     expect(sorted.map((i) => i.id)).toEqual(['x', 'y'])

@@ -78,4 +78,19 @@ class ShoppingListApplyChangeTest {
         assertThat(active.get(0).name().value()).isEqualTo("Eggs");   // "a0" < "b0"
         assertThat(active.get(1).name().value()).isEqualTo("Milk");
     }
+
+    @Test
+    void activeItemsBreaksEqualSortKeysByIdString() {
+        var list = emptyList();
+        // Ids chosen so lexicographic string order is the deciding factor.
+        var idFirst = UUID.fromString("0aaaaaaa-0000-0000-0000-000000000000");
+        var idSecond = UUID.fromString("0bbbbbbb-0000-0000-0000-000000000000");
+        var addSecond = new ItemChange(idSecond, LIST_ID, ItemField.NAME, "Bananas", 100L, OWNER);
+        var addFirst = new ItemChange(idFirst, LIST_ID, ItemField.NAME, "Apples", 200L, OWNER);
+        // Both keep the default sort key "a0"; insertion order is second-then-first.
+        var updated = list.applyChange(addSecond).applyChange(addFirst);
+        var active = updated.activeItems();
+        assertThat(active.get(0).id()).isEqualTo(idFirst);
+        assertThat(active.get(1).id()).isEqualTo(idSecond);
+    }
 }
