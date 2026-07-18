@@ -62,4 +62,11 @@ class FractionalIndexTest {
         assertThatThrownBy(() -> FractionalIndex.between("z0", "a0"))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void appendAfterHighestKeyExtendsInsteadOfOverflowing() {
+        String next = FractionalIndex.append("z0");
+        assertThat(next).isEqualTo("z0m0");
+        assertThat(next).isGreaterThan("z0");
+    }
 }

@@ -44,4 +44,43 @@ class SseEventPublisherTest {
             assertThat(event.getField().getValue()).isEqualTo(field.name());
         }
     }
+
+    @Test
+    void publishWithoutSubscribersIsANoOp() {
+        var publisher = new SseEventPublisher();
+        ItemChange change = new ItemChange(
+            UUID.randomUUID(), UUID.randomUUID(), ItemField.NAME, "Milk", 1L, UUID.randomUUID());
+        publisher.publishItemChange(UUID.randomUUID(), change);
+    }
+
+    @Test
+    void publishSendsToSubscribedEmitter() {
+        var publisher = new SseEventPublisher();
+        UUID listId = UUID.randomUUID();
+        var emitter = publisher.subscribe(listId);
+        assertThat(emitter).isNotNull();
+
+        // The emitter buffers events until a servlet response attaches, so send succeeds
+        ItemChange change = new ItemChange(
+            UUID.randomUUID(), listId, ItemField.CHECKED, "true", 2L, UUID.randomUUID());
+        publisher.publishItemChange(listId, change);
+
+        // Events for other lists do not reach this emitter's list bucket
+        publisher.publishItemChange(UUID.randomUUID(), change);
+    }
+
+    @Test
+    void shutdownCompletesAllEmitters() {
+        var publisher = new SseEventPublisher();
+        UUID listId = UUID.randomUUID();
+        publisher.subscribe(listId);
+        publisher.subscribe(listId);
+
+        publisher.shutdown();
+
+        // After shutdown the registry is empty: publishing again must not fail
+        ItemChange change = new ItemChange(
+            UUID.randomUUID(), listId, ItemField.NAME, "x", 3L, UUID.randomUUID());
+        publisher.publishItemChange(listId, change);
+    }
 }

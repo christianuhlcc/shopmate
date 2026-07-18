@@ -112,4 +112,33 @@ class ShoppingListRepositoryAdapterIT {
         var result = listRepository.findById(listId);
         assertThat(result.get().items().get(itemId).name().value()).isEqualTo("Correct");
     }
+
+    @Test
+    void updatesToEveryLwwFieldArePersisted() {
+        User owner = userRepository.save(new User(UUID.randomUUID(), "fields@test.com", "Fields User", null));
+        UUID listId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+
+        ShoppingList list = listRepository.save(new ShoppingList(
+            listId, "Fields Test", owner.id(),
+            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+
+        listRepository.save(list.applyChange(
+            new ItemChange(itemId, listId, ItemField.NAME, "Milk", 100L, owner.id())));
+
+        long ts = 200L;
+        for (var change : List.of(
+                new ItemChange(itemId, listId, ItemField.QUANTITY, "3", ts, owner.id()),
+                new ItemChange(itemId, listId, ItemField.CHECKED, "true", ts + 1, owner.id()),
+                new ItemChange(itemId, listId, ItemField.DELETED, "true", ts + 2, owner.id()),
+                new ItemChange(itemId, listId, ItemField.SORT_KEY, "m5", ts + 3, owner.id()))) {
+            listRepository.save(listRepository.findById(listId).get().applyChange(change));
+        }
+
+        var item = listRepository.findById(listId).get().items().get(itemId);
+        assertThat(item.quantity().value()).isEqualTo("3");
+        assertThat(item.checked().value()).isTrue();
+        assertThat(item.deleted().value()).isTrue();
+        assertThat(item.sortKey().value()).isEqualTo("m5");
+    }
 }

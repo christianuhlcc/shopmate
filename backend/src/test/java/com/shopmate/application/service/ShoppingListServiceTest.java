@@ -10,6 +10,7 @@ import com.shopmate.domain.model.LwwField;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
+import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.domain.port.out.EventPublisher;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
@@ -106,6 +107,23 @@ class ShoppingListServiceTest {
         String longName = "x".repeat(101);
         assertThatThrownBy(() -> service.addItem(LIST_ID, longName, "1", OWNER_ID))
             .isInstanceOf(InvalidItemException.class);
+    }
+
+    @Test
+    void addItemFailsNullName() {
+        assertThatThrownBy(() -> service.addItem(LIST_ID, null, "1", OWNER_ID))
+            .isInstanceOf(InvalidItemException.class);
+    }
+
+    @Test
+    void applyItemChangeAcceptsValidName() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.NAME, "Oats", 100L, MEMBER_ID);
+
+        ShoppingList saved = service.applyItemChange(LIST_ID, change, MEMBER_ID);
+
+        assertThat(saved.items().get(change.itemId()).name().value()).isEqualTo("Oats");
     }
 
     @Test
@@ -206,6 +224,125 @@ class ShoppingListServiceTest {
             .filter(c -> c.field() == ItemField.QUANTITY)
             .findFirst().orElseThrow();
         assertThat(qty.serializedValue()).isEqualTo("1");
+    }
+
+    @Test
+    void getListsForUserDelegatesToRepository() {
+        List<ShoppingList> lists = List.of(emptyList());
+        when(listRepository.findAllByMemberId(MEMBER_ID)).thenReturn(lists);
+        assertThat(service.getListsForUser(MEMBER_ID)).isEqualTo(lists);
+    }
+
+    @Test
+    void createListSavesListWithOwnerAsSoleMember() {
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList created = service.createList(OWNER_ID, "Weekend");
+
+        assertThat(created.name()).isEqualTo("Weekend");
+        assertThat(created.ownerId()).isEqualTo(OWNER_ID);
+        assertThat(created.memberIds()).containsExactly(OWNER_ID);
+        assertThat(created.items()).isEmpty();
+    }
+
+    @Test
+    void getListReturnsListForMember() {
+        ShoppingList list = emptyList();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(list));
+        assertThat(service.getList(LIST_ID, MEMBER_ID)).isEqualTo(list);
+    }
+
+    @Test
+    void addItemAppendsAfterLastActiveItem() {
+        ShoppingList list = listWithNItems(2);
+        String lastKey = list.activeItems().getLast().sortKey().value();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(list));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList saved = service.addItem(LIST_ID, "Butter", "1", MEMBER_ID);
+
+        ShoppingItem added = saved.items().values().stream()
+            .filter(i -> i.name().value().equals("Butter"))
+            .findFirst().orElseThrow();
+        assertThat(added.sortKey().value().compareTo(lastKey)).isGreaterThan(0);
+    }
+
+    @Test
+    void applyItemChangeSavesAndPublishes() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.QUANTITY, "3", 100L, MEMBER_ID);
+
+        ShoppingList saved = service.applyItemChange(LIST_ID, change, MEMBER_ID);
+
+        assertThat(saved.items()).containsKey(change.itemId());
+        verify(listRepository).save(any());
+        verify(eventPublisher).publishItemChange(LIST_ID, change);
+    }
+
+    @Test
+    void applyItemChangeRejectsBlankName() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.NAME, "  ", 100L, MEMBER_ID);
+        assertThatThrownBy(() -> service.applyItemChange(LIST_ID, change, MEMBER_ID))
+            .isInstanceOf(InvalidItemException.class);
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteItemAppliesTombstoneAndPublishes() {
+        ShoppingList list = listWithNItems(1);
+        UUID itemId = list.items().keySet().iterator().next();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(list));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList saved = service.deleteItem(LIST_ID, itemId, MEMBER_ID);
+
+        assertThat(saved.items().get(itemId).deleted().value()).isTrue();
+        ArgumentCaptor<ItemChange> captor = ArgumentCaptor.forClass(ItemChange.class);
+        verify(eventPublisher).publishItemChange(eq(LIST_ID), captor.capture());
+        assertThat(captor.getValue().field()).isEqualTo(ItemField.DELETED);
+        assertThat(captor.getValue().serializedValue()).isEqualTo("true");
+    }
+
+    @Test
+    void addMemberAddsUserFoundByEmail() {
+        UUID newMemberId = UUID.randomUUID();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(userRepository.findByEmail("friend@example.com"))
+            .thenReturn(Optional.of(new User(newMemberId, "friend@example.com", "Friend", null)));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList updated = service.addMember(LIST_ID, "friend@example.com", OWNER_ID);
+
+        assertThat(updated.memberIds()).contains(OWNER_ID, MEMBER_ID, newMemberId);
+    }
+
+    @Test
+    void addMemberThrowsWhenEmailUnknown() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(userRepository.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.addMember(LIST_ID, "ghost@example.com", OWNER_ID))
+            .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    void removeMemberIsIdempotentForNonMember() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        service.removeMember(LIST_ID, STRANGER_ID, OWNER_ID);
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void ownerCanRemoveOtherMember() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.removeMember(LIST_ID, MEMBER_ID, OWNER_ID);
+
+        ArgumentCaptor<ShoppingList> captor = ArgumentCaptor.forClass(ShoppingList.class);
+        verify(listRepository).save(captor.capture());
+        assertThat(captor.getValue().memberIds()).doesNotContain(MEMBER_ID);
     }
 
     @Test
