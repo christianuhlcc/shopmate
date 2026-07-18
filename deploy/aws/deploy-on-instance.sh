@@ -23,9 +23,19 @@ get_param() {
     --query Parameter.Value --output text
 }
 
+# Fetch every parameter as a plain assignment BEFORE the heredoc: `set -e`
+# aborts on a failed $(…) in an assignment, but NOT inside a heredoc body —
+# there a missing parameter would silently render as an empty value (this
+# bit us: empty DASH0_ENDPOINT crash-looped the collector).
 DOMAIN=$(get_param DOMAIN)
 ECR_REGISTRY=$(get_param ECR_REGISTRY)
 CERTBOT_EMAIL=$(get_param CERTBOT_EMAIL)
+DB_PASSWORD=$(get_param DB_PASSWORD)
+GOOGLE_CLIENT_ID=$(get_param GOOGLE_CLIENT_ID)
+GOOGLE_CLIENT_SECRET=$(get_param GOOGLE_CLIENT_SECRET)
+JWT_SECRET=$(get_param JWT_SECRET)
+DASH0_ENDPOINT=$(get_param DASH0_ENDPOINT)
+DASH0_AUTH_TOKEN=$(get_param DASH0_AUTH_TOKEN)
 
 umask 077
 cat > .env <<EOF
@@ -33,12 +43,12 @@ COMPOSE_PROJECT_NAME=shopmate
 DOMAIN=$DOMAIN
 ECR_REGISTRY=$ECR_REGISTRY
 IMAGE_TAG=$IMAGE_TAG
-DB_PASSWORD=$(get_param DB_PASSWORD)
-GOOGLE_CLIENT_ID=$(get_param GOOGLE_CLIENT_ID)
-GOOGLE_CLIENT_SECRET=$(get_param GOOGLE_CLIENT_SECRET)
-JWT_SECRET=$(get_param JWT_SECRET)
-DASH0_ENDPOINT=$(get_param DASH0_ENDPOINT)
-DASH0_AUTH_TOKEN=$(get_param DASH0_AUTH_TOKEN)
+DB_PASSWORD=$DB_PASSWORD
+GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
+JWT_SECRET=$JWT_SECRET
+DASH0_ENDPOINT=$DASH0_ENDPOINT
+DASH0_AUTH_TOKEN=$DASH0_AUTH_TOKEN
 EOF
 
 aws ecr get-login-password | docker login --username AWS --password-stdin "$ECR_REGISTRY"

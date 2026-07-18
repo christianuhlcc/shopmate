@@ -69,12 +69,21 @@ server {
     }
 
     # Browser RUM telemetry → OTel collector (same-origin, so no CORS and no
-    # public Dash0 token; the collector attaches the auth header). The trailing
-    # slashes strip the /telemetry prefix: /telemetry/v1/traces → /v1/traces.
+    # public Dash0 token; the collector attaches the auth header). The rewrite
+    # strips the /telemetry prefix: /telemetry/v1/traces → /v1/traces.
     # Inherits the server-level proxy_set_header directives, including
     # X-Forwarded-For, which the collector forwards for RUM geo accuracy.
+    #
+    # proxy_pass MUST stay a variable: that defers DNS resolution to request
+    # time (via docker's embedded resolver), so nginx starts and stays up even
+    # when the collector container is down — telemetry loss must never take
+    # the site down (learned 2026-07-18: a crash-looping collector removed its
+    # DNS name and nginx crash-looped with it → site dark).
     location /telemetry/ {
-        proxy_pass http://otel-collector:4318/;
+        resolver 127.0.0.11 valid=10s;
+        rewrite ^/telemetry(/.*)$ $1 break;
+        set $otel_collector http://otel-collector:4318;
+        proxy_pass $otel_collector;
         # The web SDK batches request bodies up to ~512 KB.
         client_max_body_size 1m;
     }

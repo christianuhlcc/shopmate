@@ -37,7 +37,8 @@ variable "certbot_email" {
 variable "dash0_endpoint" {
   description = "Dash0 OTLP-over-HTTP ingress endpoint for the org's region (see https://app.dash0.com/settings/endpoints)"
   type        = string
-  default     = "https://ingress.eu-west-1.aws.dash0.com"
+  # Org lives in GCP europe-west4 (verified 2026-07-18: POST /v1/traces → 200)
+  default     = "https://ingress.europe-west4.gcp.dash0.com"
 }
 
 variable "compose_version" {
