@@ -21,6 +21,7 @@ with a UUID tie-break. Ordering uses fractional indexes, so a reorder is always 
 | Database   | PostgreSQL |
 | Contract   | `api/openapi.yaml` — single source of truth; both sides generate typed code from it |
 | Tests      | JUnit 5 / MockMvc / ArchUnit (backend), Vitest + Testing Library (frontend) |
+| Observability | OpenTelemetry (Java agent, Collector, `@dash0/sdk-web` RUM) → [Dash0](https://www.dash0.com) — prod only |
 
 ## Repository layout
 
@@ -29,7 +30,10 @@ api/            OpenAPI contract (openapi.yaml)
 backend/        Spring Boot service (hexagonal architecture, enforced by ArchUnit)
 frontend/       Vite + React SPA
 docker-compose.yml   full stack: postgres + backend + frontend + nginx edge proxy
+docker-compose.prod.yml  production override: ECR images, TLS, certbot, OTel collector
 nginx/          edge reverse-proxy config used by the compose stack
+observability/  OpenTelemetry Collector config (prod telemetry → Dash0)
+deploy/         Terraform infra + AWS deploy scripts (see docs/aws-deploy.md)
 PLAN.md         implementation plan and phase status
 CLAUDE.md       developer guide (architecture and layer rules)
 ```
@@ -162,6 +166,11 @@ Then edit the same list in both windows and watch changes sync live over SSE.
 
 ## Deployment
 
+The reference production deployment (single EC2 instance, Terraform, GitHub
+OIDC, SSM Run Command, Let's Encrypt) is documented in
+[docs/aws-deploy.md](docs/aws-deploy.md) and runs at
+https://shopmate.uhl-steine-scherben.org.
+
 ### Docker Compose (recommended)
 
 ```bash
@@ -231,6 +240,23 @@ cd frontend && npm ci && npm run build
   `POST /api/auth/exchange`.
 - SSE uses a separate 15-minute JWT scoped to `(userId, listId)`, passed as
   `?token=` because EventSource cannot set headers.
+
+## Observability
+
+In production, all three signals flow to [Dash0](https://www.dash0.com) through
+an OpenTelemetry Collector sidecar (`observability/otelcol.yaml`); local dev
+exports nothing.
+
+- **Backend** — OTel Java agent (baked into the image, activated only in prod):
+  traces, JVM/HTTP metrics, and trace-correlated logs.
+- **Infrastructure** — nginx/postgres/certbot container logs (fluentd log
+  driver), EC2 host metrics, and per-container docker stats.
+- **Frontend** — real-user monitoring via `@dash0/sdk-web` (web vitals, JS
+  errors, fetch spans linked to backend traces), sent to a same-origin
+  `/telemetry/` path that nginx proxies to the collector — the Dash0 auth
+  token stays server-side, never in the browser bundle.
+
+Setup details: [docs/aws-deploy.md](docs/aws-deploy.md) → Observability.
 
 ## API
 
