@@ -74,7 +74,21 @@ if [ "$status" != healthy ]; then
   exit 1
 fi
 
-curl -fsS -o /dev/null "https://$DOMAIN/"
+# Smoke-check TLS via localhost — an EC2 instance can't reach its own EIP
+# (no hairpin NAT). --resolve keeps SNI/Host = $DOMAIN so the cert validates.
+ok=false
+for _ in $(seq 1 12); do
+  if curl -fsS -o /dev/null --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/"; then
+    ok=true
+    break
+  fi
+  sleep 5
+done
+if [ "$ok" != true ]; then
+  echo "HTTPS smoke check failed"
+  compose logs --tail 50 nginx
+  exit 1
+fi
 echo "Deployed $IMAGE_TAG — https://$DOMAIN is up"
 
 docker image prune -f > /dev/null
