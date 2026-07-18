@@ -54,11 +54,14 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         long now = System.currentTimeMillis();
         long exp = now + 24L * 60 * 60 * 1000; // 24 hours
+        // Pin HS256 explicitly: signWith(key) picks the algorithm from the key
+        // size (a 64-byte prod secret selects HS512), but the resource server's
+        // NimbusJwtDecoder only accepts HS256 by default.
         String jwt = Jwts.builder()
                 .subject(user.id().toString())
                 .issuedAt(new Date(now))
                 .expiration(new Date(exp))
-                .signWith(secretKey)
+                .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
 
         String code = authCodeService.issueCode(jwt);

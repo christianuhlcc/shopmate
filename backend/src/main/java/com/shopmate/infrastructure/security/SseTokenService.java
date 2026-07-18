@@ -31,7 +31,7 @@ public class SseTokenService {
                 .claim("listId", listId.toString())
                 .issuedAt(new Date(now))
                 .expiration(new Date(exp))
-                .signWith(secretKey)
+                .signWith(secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 

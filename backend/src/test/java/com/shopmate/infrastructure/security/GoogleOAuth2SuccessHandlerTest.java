@@ -59,6 +59,32 @@ class GoogleOAuth2SuccessHandlerTest {
     }
 
     @Test
+    void mintedJwtIsAcceptedByResourceServerDecoderEvenWithLongSecret() throws Exception {
+        // Prod secrets are 64 bytes (openssl rand -base64 48). jjwt's
+        // signWith(key) would auto-select HS512 for such a key, which the
+        // NimbusJwtDecoder built by SecurityConfig rejects (HS256 default) —
+        // every authenticated request then fails with 401.
+        String longSecret = "x".repeat(64);
+        var handler = new GoogleOAuth2SuccessHandler(userRepository, authCodeService, longSecret, FRONTEND);
+        UUID userId = UUID.randomUUID();
+        when(authentication.getPrincipal()).thenReturn(googleUser("new@example.com"));
+        when(userRepository.findByEmail("new@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(org.mockito.ArgumentMatchers.any()))
+            .thenAnswer(i -> {
+                User u = i.getArgument(0);
+                return new User(userId, u.email(), u.displayName(), u.avatarUrl());
+            });
+        when(authCodeService.issueCode(org.mockito.ArgumentMatchers.anyString())).thenReturn("code-1");
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), new MockHttpServletResponse(), authentication);
+
+        ArgumentCaptor<String> jwt = ArgumentCaptor.forClass(String.class);
+        verify(authCodeService).issueCode(jwt.capture());
+        var decoder = new SecurityConfig(null, longSecret).jwtDecoder();
+        assertThat(decoder.decode(jwt.getValue()).getSubject()).isEqualTo(userId.toString());
+    }
+
+    @Test
     void existingUserKeepsIdAndGetsUpdatedProfile() throws Exception {
         var handler = new GoogleOAuth2SuccessHandler(userRepository, authCodeService, SECRET, FRONTEND);
         UUID existingId = UUID.randomUUID();

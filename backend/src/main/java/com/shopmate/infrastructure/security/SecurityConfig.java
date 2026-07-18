@@ -18,13 +18,14 @@ import java.nio.charset.StandardCharsets;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Value("${shopmate.jwt.secret}")
-    private String jwtSecret;
+    private final String jwtSecret;
 
     private final GoogleOAuth2SuccessHandler googleOAuth2SuccessHandler;
 
-    public SecurityConfig(GoogleOAuth2SuccessHandler googleOAuth2SuccessHandler) {
+    public SecurityConfig(GoogleOAuth2SuccessHandler googleOAuth2SuccessHandler,
+                          @Value("${shopmate.jwt.secret}") String jwtSecret) {
         this.googleOAuth2SuccessHandler = googleOAuth2SuccessHandler;
+        this.jwtSecret = jwtSecret;
     }
 
     @Bean
