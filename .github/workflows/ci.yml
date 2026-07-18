@@ -33,7 +33,29 @@ jobs:
 
       - name: Build, test, verify coverage
         working-directory: backend
-        run: ./gradlew check
+        run: ./gradlew check 2>&1 | tee gradle-check.log; exit ${PIPESTATUS[0]}
+
+      # Surface failure details as workflow annotations (visible via the public
+      # checks API, useful when logs/artifacts aren't accessible).
+      - name: Annotate failures
+        if: failure()
+        working-directory: backend
+        run: |
+          find build/test-results -name '*.xml' 2>/dev/null | while read -r f; do
+            python3 - "$f" <<'EOF'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          for tc in root.iter('testcase'):
+              for fl in tc.findall('failure') + tc.findall('error'):
+                  msg = (fl.get('message') or (fl.text or '').strip().splitlines()[0:1] or [''])
+                  msg = msg if isinstance(msg, str) else (msg[0] if msg else '')
+                  name = f"{tc.get('classname')}.{tc.get('name')}"
+                  print(f"::error title={name}::{msg[:600]}")
+          EOF
+          done
+          grep -A 3 "What went wrong" gradle-check.log | head -20 | while IFS= read -r l; do
+            echo "::error title=gradle::${l}"
+          done
 
       - name: Upload test reports
         if: failure()
