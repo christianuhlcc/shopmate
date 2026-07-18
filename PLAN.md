@@ -69,8 +69,8 @@ Each phase = one meaningful commit (per the commit convention).
 | 6 | **Frontend** (Vite + React + TS + Tailwind): auth flow, lists + list pages, item CRUD, client-side CRDT utils (fractionalIndex, lwwMerge), SSE live sync, tests | ✅ done | `3bbb762` |
 | 7 | End-to-end wiring & verification: API-level CRDT convergence verified (concurrent adds by two users), SSE broadcast contract-correct, bug fixes incl. deterministic equal-sortKey ordering | ✅ done | `11cbf77`, `779e2ee` |
 | 8 | Docs + Docker deployment stack: README, Dockerfiles, nginx edge proxy, compose file, actuator health, forwarded headers; full stack smoke-tested in Docker (colima) incl. live SSE through the proxy | ✅ done | `1e3a068`, `4fe852e`, `c9369ff`, `4e726a2` |
-| 9 | CI: GitHub Actions — build + test gates (backend `check`, frontend `test:coverage` + `build`) on every push/PR | ⬜ next | — |
-| 10 | CD: deploy to AWS via GitHub Actions — single EC2 + compose (decided 2026-07-12) | ⬜ planned | — |
+| 9 | CI: GitHub Actions — build + test gates (backend `check`, frontend `test:coverage` + `build`, docker compose build) on every push/PR | ✅ done | `3d7edc8`…`dada2b5`; run #4 all green |
+| 10 | CD: deploy to AWS via GitHub Actions — single EC2 + compose (decided 2026-07-12) | ⬜ next | — |
 
 ## Endpoints (from `api/openapi.yaml`)
 `GET /users/me` · `POST /auth/exchange` · `GET|POST /lists` ·
@@ -86,31 +86,42 @@ Each phase = one meaningful commit (per the commit convention).
   15-min TTL, passed as `?token=` (EventSource can't set headers).
 - `GOOGLE_CLIENT_ID/SECRET`, `JWT_SECRET` from env only; `.env.example` → `.env`.
 
-## Current state (2026-07-12 evening)
+## Current state (2026-07-18)
 
-- **All local phases (0–8) are done and committed** through `4e726a2`. Both
-  quality gates green: backend `./gradlew check` (tests + 90% coverage +
-  ArchUnit), frontend `npm run test:coverage` (92/92, >90%) and `npm run build`.
-- **Docker stack verified end-to-end** on this machine (colima): all four
-  services healthy; SPA, API routing, SPA fallback, OAuth redirect URI, Flyway
-  migration, and live SSE streaming through the nginx edge proxy all confirmed
-  against the running containers.
+- **Phases 0–9 done.** `main` is pushed to `github.com:christianuhlcc/shopmate`
+  and **CI is green** (`.github/workflows/ci.yml`, three jobs: backend
+  `./gradlew check`, frontend `test:coverage` + `build`, `docker compose build`).
+  On failure, the backend job emits failing tests as workflow annotations
+  (readable via the public checks API) and uploads the test reports artifact.
+- **Phase 9 findings (fixed en route):**
+  - `gradle-wrapper.jar` was never committed — the `.gitignore` negation was
+    rooted at the repo top level, not `backend/`. Broke every fresh checkout.
+  - The backend coverage gate had **never actually run**: `contextLoads()` used
+    a `test` profile that excluded the DataSource, so Spring context load
+    failed and `:test` aborted before `jacocoTestCoverageVerification`; local
+    "green" runs were stale Gradle state. Real coverage was ~60% line.
+    Fixed by booting the smoke test on Testcontainers postgres
+    (`integration-test` profile) and adding the missing unit tests
+    (controllers, security services, SSE, service happy paths, LWW persistence
+    merge). Now 98% line / 94% branch, gate enforced.
+  - testcontainers-bom bumped 1.20.3 → 1.21.3 (old docker-java speaks Docker
+    API 1.32; daemons ≥ 28 reject it).
+- **Running backend tests locally (colima):** the test JVM needs
+  `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and
+  `JAVA_TOOL_OPTIONS=-Dapi.version=1.44` (colima's Docker 29 daemon rejects
+  docker-java's default API version even after the bump);
+  `TESTCONTAINERS_RYUK_DISABLED=true` avoids ryuk startup issues.
+- **Docker stack verified end-to-end** on this machine (colima, 2026-07-12).
 - **Google auth**: wired and redirect-verified, but a real sign-in has not been
   exercised locally yet — needs real credentials; setup guide in
-  `docs/google-auth-setup.md` (uncommitted, with README links).
-- Remote `github.com:christianuhlcc/shopmate` exists; **nothing pushed yet**.
+  `docs/google-auth-setup.md`.
 
 ## Remaining work
 
 1. **Verify Google auth locally** — follow `docs/google-auth-setup.md`: create
    the OAuth client (register both redirect URIs), fill `.env`, sign in through
    the compose stack, confirm user upsert + JWT exchange.
-2. **Phase 9 — CI (GitHub Actions):** push `main`; workflow running the two
-   gates on push/PR: backend `./gradlew check` (Testcontainers ITs work on
-   GitHub runners — Docker is available) and frontend
-   `npm run test:coverage` + `npm run build`. Docker image builds as a third
-   job to catch Dockerfile drift.
-3. **Phase 10 — CD to AWS (GitHub Actions).** **Decided 2026-07-12: single
+2. **Phase 10 — CD to AWS (GitHub Actions).** **Decided 2026-07-12: single
    EC2 instance running the compose stack** (~10–15 €/mo; reuses the verified
    `docker-compose.yml` nearly verbatim). Rejected: ECS Fargate + RDS + ALB
    (~50–80 €/mo, overkill for household scale); App Runner (its ~120 s
@@ -129,11 +140,15 @@ Each phase = one meaningful commit (per the commit convention).
      set to the public domain.
    - Google OAuth redirect URI registered for the public domain; HTTPS
      mandatory (tokens in headers + SSE query param).
-4. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
+3. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
    `FractionalIndex` and TS `fractionalIndex.ts` use incompatible algorithms
    (no reorder UI wired yet; fix = unify algorithm + shared cross-language
-   test vectors). Minor: 405 mapped to 500 by `ApiExceptionHandler`;
-   `SseEventPublisher.send` only catches `IOException`.
+   test vectors). Related, found 2026-07-18 while writing coverage tests:
+   `FractionalIndex.between("b0", "b0a")` returns `"b0am"`, which sorts
+   *after* `"b0a"` — violates the strictly-between contract (`between` is
+   unused by production code today; fold the fix into BUG-8). Minor: 405
+   mapped to 500 by `ApiExceptionHandler`; `SseEventPublisher.send` only
+   catches `IOException`.
 
 ## Key invariants to never break
 - Reorder = `SORT_KEY` LWW update, never delete+reinsert.
