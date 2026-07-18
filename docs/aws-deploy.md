@@ -13,7 +13,8 @@ the verified `docker-compose.yml`; ECS/Fargate and App Runner were rejected
 | Piece | Where |
 |---|---|
 | Infrastructure as code (ECR, IAM/OIDC, EC2, EIP, Route53, SSM config) | `deploy/terraform/` |
-| Runtime secrets (JWT, DB password, Google OAuth) | SSM Parameter Store `/shopmate/prod/*`, written by `deploy/aws/set-secrets.sh` |
+| Runtime secrets (JWT, DB password, Google OAuth, Dash0 token) | SSM Parameter Store `/shopmate/prod/*`, written by `deploy/aws/set-secrets.sh` |
+| Observability (OTel Collector → Dash0: traces, metrics, logs, RUM) | `observability/otelcol.yaml`, collector service in `docker-compose.prod.yml` |
 | CD workflow (build arm64 images → ECR → SSM Run Command) | `.github/workflows/deploy.yml` |
 | On-instance deploy script (render `.env`, cert bootstrap, compose up) | `deploy/aws/deploy-on-instance.sh` |
 | Production compose override (ECR images, TLS nginx, certbot renewal) | `docker-compose.prod.yml`, `nginx/nginx.prod.conf.template` |
@@ -63,7 +64,29 @@ cd /opt/shopmate && docker compose -f docker-compose.yml -f docker-compose.prod.
 Terraform state is **local** (`deploy/terraform/*.tfstate`, gitignored) — one
 operator, one machine. Don't lose it; `terraform import` is the fallback.
 Secrets are never in state: Terraform manages only non-secret parameters
-(`DOMAIN`, `ECR_REGISTRY`, `CERTBOT_EMAIL`).
+(`DOMAIN`, `ECR_REGISTRY`, `CERTBOT_EMAIL`, `DASH0_ENDPOINT`).
+
+## Observability (Dash0)
+
+All three signals flow through an **OTel Collector sidecar** in the prod
+compose stack (`observability/otelcol.yaml`); nothing is exported from local
+dev.
+
+- **Backend**: OTel Java agent (baked into the image, activated only by the
+  prod `JAVA_TOOL_OPTIONS`) — traces, JVM/HTTP metrics, and logback logs with
+  trace correlation, as `shopmate-backend`.
+- **Infra**: docker logs from nginx/postgres/certbot via the fluentd log
+  driver (tag → `service.name`), host metrics via `/hostfs`, per-container
+  metrics via the docker socket.
+- **Frontend RUM**: `@dash0/sdk-web` (prod https only) sends to the same-origin
+  `/telemetry/` path; nginx proxies it to the collector, which attaches the
+  Dash0 auth token server-side — no token in the browser bundle.
+- **Setup**: `DASH0_ENDPOINT` comes from Terraform (`dash0_endpoint` variable —
+  must match the org's region, see app.dash0.com → Settings → Endpoints);
+  `DASH0_AUTH_TOKEN` is an Ingesting-permission token written by
+  `set-secrets.sh` (add it to `./.env` first). Both SSM parameters must exist
+  before the next deploy, or `deploy-on-instance.sh` fails while rendering
+  `.env`.
 
 ## Caveats / follow-ups
 

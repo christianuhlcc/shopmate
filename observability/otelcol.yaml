@@ -1,0 +1,93 @@
+# OpenTelemetry Collector (contrib) — single telemetry gateway for the prod host.
+#
+# Inputs:
+#   - OTLP gRPC/HTTP (4317/4318): backend Java agent + browser RUM proxied by nginx
+#   - fluent_forward (24224): docker logs from nginx/postgres/certbot (fluentd log driver)
+#   - hostmetrics: EC2 host CPU/memory/disk/network via /hostfs mount
+#   - docker_stats: per-container CPU/memory/network via the docker socket
+#
+# Output: Dash0 (OTLP over HTTP). DASH0_ENDPOINT and DASH0_AUTH_TOKEN come from
+# the compose .env, rendered from SSM by deploy/aws/deploy-on-instance.sh.
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # Single place that attaches the Dash0 auth header; also forwards the
+  # browser's X-Forwarded-For (set by nginx on /telemetry/) so RUM sessions
+  # keep real geo data instead of the EC2 host's location.
+  headers_setter:
+    headers:
+      - action: insert
+        key: Authorization
+        value: "Bearer ${env:DASH0_AUTH_TOKEN}"
+      - action: insert
+        key: X-Forwarded-For
+        from_context: X-Forwarded-For
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        # Capture X-Forwarded-For from nginx-proxied RUM requests as metadata.
+        include_metadata: true
+  fluentforward:
+    endpoint: 0.0.0.0:24224
+  hostmetrics:
+    root_path: /hostfs
+    collection_interval: 60s
+    scrapers:
+      cpu:
+      memory:
+      load:
+      disk:
+      filesystem:
+      network:
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 60s
+
+processors:
+  # Keep the collector's footprint bounded on the 2 GiB host.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+    spike_limit_mib: 50
+  resourcedetection/system:
+    detectors: [system, env]
+    override: false
+  # Docker logs arrive with only a fluent.tag record attribute (set per service
+  # in docker-compose.prod.yml); promote it to service.name so Dash0 groups
+  # them like every other service.
+  transform/docker_logs:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["service.name"], attributes["fluent.tag"]) where attributes["fluent.tag"] != nil
+  batch:
+    metadata_keys:
+      - X-Forwarded-For
+
+exporters:
+  otlphttp/dash0:
+    endpoint: ${env:DASH0_ENDPOINT}
+    auth:
+      authenticator: headers_setter
+
+service:
+  extensions: [health_check, headers_setter]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection/system, batch]
+      exporters: [otlphttp/dash0]
+    metrics:
+      receivers: [otlp, hostmetrics, docker_stats]
+      processors: [memory_limiter, resourcedetection/system, batch]
+      exporters: [otlphttp/dash0]
+    logs:
+      receivers: [otlp, fluentforward]
+      processors: [memory_limiter, resourcedetection/system, transform/docker_logs, batch]
+      exporters: [otlphttp/dash0]

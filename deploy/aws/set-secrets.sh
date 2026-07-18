@@ -46,4 +46,15 @@ put_secret GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET" yes
 put_secret JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')" no
 put_secret DB_PASSWORD "$(openssl rand -hex 24)" no
 
+# Dash0 ingestion token (create one with Ingesting permission in the Dash0 UI
+# under Settings → Auth Tokens). Optional so the script stays rerunnable
+# before observability is configured — but deploys require it once
+# docker-compose.prod.yml expects DASH0_* in .env.
+DASH0_AUTH_TOKEN=$(env_value DASH0_AUTH_TOKEN)
+if [ -n "$DASH0_AUTH_TOKEN" ]; then
+  put_secret DASH0_AUTH_TOKEN "$DASH0_AUTH_TOKEN" yes
+else
+  echo "skip   $PREFIX/DASH0_AUTH_TOKEN (DASH0_AUTH_TOKEN not set in $ENV_FILE)"
+fi
+
 echo "done — parameters under $PREFIX ($REGION)"

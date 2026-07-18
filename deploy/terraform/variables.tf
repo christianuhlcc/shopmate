@@ -34,6 +34,12 @@ variable "certbot_email" {
   default     = "uhl.christian@googlemail.com"
 }
 
+variable "dash0_endpoint" {
+  description = "Dash0 OTLP-over-HTTP ingress endpoint for the org's region (see https://app.dash0.com/settings/endpoints)"
+  type        = string
+  default     = "https://ingress.eu-west-1.aws.dash0.com"
+}
+
 variable "compose_version" {
   description = "docker compose plugin release installed on the instance at first boot"
   type        = string

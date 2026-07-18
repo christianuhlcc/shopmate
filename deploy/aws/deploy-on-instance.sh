@@ -37,6 +37,8 @@ DB_PASSWORD=$(get_param DB_PASSWORD)
 GOOGLE_CLIENT_ID=$(get_param GOOGLE_CLIENT_ID)
 GOOGLE_CLIENT_SECRET=$(get_param GOOGLE_CLIENT_SECRET)
 JWT_SECRET=$(get_param JWT_SECRET)
+DASH0_ENDPOINT=$(get_param DASH0_ENDPOINT)
+DASH0_AUTH_TOKEN=$(get_param DASH0_AUTH_TOKEN)
 EOF
 
 aws ecr get-login-password | docker login --username AWS --password-stdin "$ECR_REGISTRY"

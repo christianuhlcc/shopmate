@@ -68,6 +68,17 @@ server {
         proxy_pass http://backend;
     }
 
+    # Browser RUM telemetry → OTel collector (same-origin, so no CORS and no
+    # public Dash0 token; the collector attaches the auth header). The trailing
+    # slashes strip the /telemetry prefix: /telemetry/v1/traces → /v1/traces.
+    # Inherits the server-level proxy_set_header directives, including
+    # X-Forwarded-For, which the collector forwards for RUM geo accuracy.
+    location /telemetry/ {
+        proxy_pass http://otel-collector:4318/;
+        # The web SDK batches request bodies up to ~512 KB.
+        client_max_body_size 1m;
+    }
+
     location / {
         proxy_pass http://frontend;
     }

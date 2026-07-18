@@ -129,7 +129,14 @@ Each phase = one meaningful commit (per the commit convention).
    (`deploy/terraform/`, local gitignored state). See `docs/aws-deploy.md`.
    Follow-up before real household use: EBS snapshot/backup story (DLM) for
    the postgres volume.
-3. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
+3. **Observability (Dash0)** — implemented 2026-07-18 (traces + metrics +
+   logs + frontend RUM via OTel Collector sidecar; see `docs/aws-deploy.md`
+   → Observability). Before the next deploy, two manual steps: create a Dash0
+   Ingesting auth token and run `deploy/aws/set-secrets.sh` (writes
+   `DASH0_AUTH_TOKEN`), and `terraform apply` (writes `DASH0_ENDPOINT`;
+   confirm the org's region first — the variable defaults to eu-west-1).
+   Deploys fail on rendering `.env` until both SSM parameters exist.
+4. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
    `FractionalIndex` and TS `fractionalIndex.ts` use incompatible algorithms
    (no reorder UI wired yet; fix = unify algorithm + shared cross-language
    test vectors). Related, found 2026-07-18 while writing coverage tests:

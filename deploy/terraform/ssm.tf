@@ -20,3 +20,9 @@ resource "aws_ssm_parameter" "certbot_email" {
   type  = "String"
   value = var.certbot_email
 }
+
+resource "aws_ssm_parameter" "dash0_endpoint" {
+  name  = "${local.ssm_prefix}/DASH0_ENDPOINT"
+  type  = "String"
+  value = var.dash0_endpoint
+}

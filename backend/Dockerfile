@@ -20,6 +20,14 @@ RUN ./gradlew bootJar --no-daemon
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 RUN addgroup -S shopmate && adduser -S shopmate -G shopmate
+
+# OTel Java agent, shipped in the image but inert by default — prod compose
+# activates it via JAVA_TOOL_OPTIONS=-javaagent:/otel/opentelemetry-javaagent.jar
+ARG OTEL_JAVAAGENT_VERSION=2.29.0
+ADD --chmod=444 https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVAAGENT_VERSION}/opentelemetry-javaagent.jar /otel/opentelemetry-javaagent.jar
+# ADD creates /otel root-only; the shopmate user needs to traverse it.
+RUN chmod 755 /otel
+
 COPY --from=build /app/backend/build/libs/*.jar app.jar
 USER shopmate
 EXPOSE 8080

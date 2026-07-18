@@ -96,6 +96,15 @@ chore:  build, config, tooling changes
 
 One meaningful commit per completed phase.
 
+## Observability (prod only)
+
+Traces, metrics, and logs go to Dash0 through an OTel Collector sidecar
+(`observability/otelcol.yaml` + `docker-compose.prod.yml`). Backend = OTel Java
+agent (in the image, activated only in prod); frontend = `@dash0/sdk-web`
+(`src/observability.ts`, enabled only on prod https, exports via the same-origin
+`/telemetry/` nginx proxy); infra logs via fluentd log driver. Local dev exports
+nothing. Details: `docs/aws-deploy.md`.
+
 ## Security Notes
 
 - JWTs are never placed in URLs. The OAuth2 callback issues a short-lived single-use auth code; the frontend exchanges it for a JWT via `POST /api/auth/exchange`.
