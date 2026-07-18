@@ -1,0 +1,97 @@
+# CD (phase 10): build arm64 images → push to ECR → deploy to the EC2 host
+# via SSM Run Command. Runs after CI succeeds on main (or manually).
+#
+# Auth is OIDC — the role trusts only main-branch workflows of this repo
+# (deploy/terraform/iam.tf). No AWS keys in GitHub. The hardcoded ARNs below
+# are not secrets; they match the Terraform-managed resources.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  AWS_ROLE_ARN: arn:aws:iam::881302125161:role/shopmate-github-deploy
+  ECR_REGISTRY: 881302125161.dkr.ecr.eu-central-1.amazonaws.com
+  # workflow_run: deploy exactly the commit CI validated; workflow_dispatch: HEAD
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  deploy:
+    name: Build, push, deploy
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    # arm64 runner: the t4g instance is arm64, so images build natively
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        run: |
+          for image in backend frontend; do
+            docker build -f "$image/Dockerfile" \
+              -t "$ECR_REGISTRY/shopmate/$image:$DEPLOY_SHA" \
+              -t "$ECR_REGISTRY/shopmate/$image:latest" .
+            docker push --all-tags "$ECR_REGISTRY/shopmate/$image"
+          done
+
+      - name: Deploy via SSM Run Command
+        run: |
+          instance_id=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=shopmate" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          test "$instance_id" != "None" || { echo "no running shopmate instance"; exit 1; }
+
+          command_id=$(aws ssm send-command \
+            --instance-ids "$instance_id" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy $DEPLOY_SHA" \
+            --parameters "$(jq -n --arg sha "$DEPLOY_SHA" '{
+              executionTimeout: ["900"],
+              commands: [
+                "set -euo pipefail",
+                "cd /opt/shopmate",
+                "git fetch origin main",
+                ("git reset --hard " + $sha),
+                ("./deploy/aws/deploy-on-instance.sh " + $sha)
+              ]}')" \
+            --query Command.CommandId --output text)
+          echo "SSM command: $command_id on $instance_id"
+
+          status=Pending
+          for _ in $(seq 1 90); do
+            status=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$instance_id" --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Success|Failed|Cancelled|TimedOut|DeliveryTimedOut) break;; esac
+            sleep 10
+          done
+
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" \
+            --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' \
+            --output json | jq -r '"--- status: " + .status, "--- stdout:", .stdout, "--- stderr:", .stderr'
+          test "$status" = Success

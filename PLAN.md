@@ -70,7 +70,7 @@ Each phase = one meaningful commit (per the commit convention).
 | 7 | End-to-end wiring & verification: API-level CRDT convergence verified (concurrent adds by two users), SSE broadcast contract-correct, bug fixes incl. deterministic equal-sortKey ordering | ✅ done | `11cbf77`, `779e2ee` |
 | 8 | Docs + Docker deployment stack: README, Dockerfiles, nginx edge proxy, compose file, actuator health, forwarded headers; full stack smoke-tested in Docker (colima) incl. live SSE through the proxy | ✅ done | `1e3a068`, `4fe852e`, `c9369ff`, `4e726a2` |
 | 9 | CI: GitHub Actions — build + test gates (backend `check`, frontend `test:coverage` + `build`, docker compose build) on every push/PR | ✅ done | `3d7edc8`…`dada2b5`; run #4 all green |
-| 10 | CD: deploy to AWS via GitHub Actions — single EC2 + compose (decided 2026-07-12) | ⬜ next | — |
+| 10 | CD: deploy to AWS via GitHub Actions — single EC2 + compose, IaC in Terraform | ✅ done | `deploy/terraform/`, `.github/workflows/deploy.yml`, `docs/aws-deploy.md`; live at https://shopmate.uhl-steine-scherben.org |
 
 ## Endpoints (from `api/openapi.yaml`)
 `GET /users/me` · `POST /auth/exchange` · `GET|POST /lists` ·
@@ -118,28 +118,17 @@ Each phase = one meaningful commit (per the commit convention).
 
 ## Remaining work
 
-1. **Verify Google auth locally** — follow `docs/google-auth-setup.md`: create
-   the OAuth client (register both redirect URIs), fill `.env`, sign in through
-   the compose stack, confirm user upsert + JWT exchange.
-2. **Phase 10 — CD to AWS (GitHub Actions).** **Decided 2026-07-12: single
-   EC2 instance running the compose stack** (~10–15 €/mo; reuses the verified
-   `docker-compose.yml` nearly verbatim). Rejected: ECS Fargate + RDS + ALB
-   (~50–80 €/mo, overkill for household scale); App Runner (its ~120 s
-   response limit kills long-lived SSE streams). Building blocks:
-   - GH Actions builds & pushes both images to **ECR**, then deploys via
-     **SSM Run Command** (`docker compose pull && docker compose up -d` on
-     the instance) — no SSH keys in GitHub.
-   - GH Actions authenticates via **OIDC role** — no long-lived AWS keys.
-   - Runtime secrets (`JWT_SECRET`, `GOOGLE_*`, `DB_PASSWORD`) in **SSM
-     Parameter Store**, rendered into the instance's `.env` at deploy time.
-   - Postgres data on the instance's **EBS volume** (compose named volume);
-     snapshot/backup story before real household use.
-   - A small production compose override (`docker-compose.prod.yml`): images
-     from ECR instead of `build:`, TLS via **Let's Encrypt** on the edge
-     nginx (443 + HTTP→HTTPS redirect), `PUBLIC_PORT`/`FRONTEND_BASE_URL`
-     set to the public domain.
-   - Google OAuth redirect URI registered for the public domain; HTTPS
-     mandatory (tokens in headers + SSE query param).
+1. **Register the prod Google OAuth redirect URI** (manual, Google Cloud
+   console):
+   `https://shopmate.uhl-steine-scherben.org/login/oauth2/code/google` on the
+   existing OAuth client, then verify a real sign-in in prod (and locally per
+   `docs/google-auth-setup.md` — still never exercised end-to-end).
+2. ~~**Phase 10 — CD to AWS**~~ ✅ done 2026-07-18 — as decided 2026-07-12
+   (single EC2 + compose, ECR, OIDC deploy role, SSM Run Command + Parameter
+   Store, Let's Encrypt on edge nginx), with **IaC in Terraform**
+   (`deploy/terraform/`, local gitignored state). See `docs/aws-deploy.md`.
+   Follow-up before real household use: EBS snapshot/backup story (DLM) for
+   the postgres volume.
 3. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
    `FractionalIndex` and TS `fractionalIndex.ts` use incompatible algorithms
    (no reorder UI wired yet; fix = unify algorithm + shared cross-language

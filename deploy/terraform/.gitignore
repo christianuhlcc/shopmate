@@ -1,0 +1,11 @@
+# Local state contains resource details; keep it out of the public repo.
+# (Secrets themselves are never in state — see ssm.tf.)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

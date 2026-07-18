@@ -1,0 +1,54 @@
+# Production override for the EC2 host — images come from ECR instead of
+# local builds, nginx terminates TLS, certbot renews the Let's Encrypt cert.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# .env (rendered by deploy/aws/deploy-on-instance.sh from SSM Parameter Store)
+# provides: DOMAIN, ECR_REGISTRY, IMAGE_TAG, DB_PASSWORD, GOOGLE_*, JWT_SECRET.
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  backend:
+    image: ${ECR_REGISTRY}/shopmate/backend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      FRONTEND_BASE_URL: https://${DOMAIN}
+      # 2 GiB host shared with postgres + nginx: cap the JVM at half the
+      # container-visible RAM instead of the default quarter.
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+
+  frontend:
+    image: ${ECR_REGISTRY}/shopmate/frontend:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+
+  nginx:
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports: !override
+      - "80:80"
+      - "443:443"
+    volumes: !override
+      - ./nginx/nginx.prod.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
+    # Reload periodically so certs renewed by the certbot sidecar get picked up.
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"
+
+  # Renews via webroot through nginx's :80 ACME location. The first issuance
+  # is done standalone by deploy-on-instance.sh before nginx can start.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+
+volumes:
+  letsencrypt:
+  certbot-webroot:
