@@ -44,7 +44,8 @@ function hookState(overrides: Partial<ReturnType<typeof useShoppingList>> = {}) 
     updateItem: vi.fn(),
     checkItem: vi.fn(),
     deleteItem: vi.fn(),
-    moveItem: vi.fn(),
+    setSection: vi.fn(),
+    moveItemTo: vi.fn(),
     ...overrides,
   }
 }

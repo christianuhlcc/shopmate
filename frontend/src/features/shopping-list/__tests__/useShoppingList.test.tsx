@@ -217,7 +217,7 @@ describe('useShoppingList — optimistic updates never fabricate timestamps', ()
     expect(result.current.items).toHaveLength(1)
   })
 
-  it('moveItem changes only the sortKey value; timestamp preserved; PATCH response reconciled', async () => {
+  it('moveItemTo within the same section changes only the sortKey value with a single PATCH; timestamp preserved', async () => {
     mockedApi.GET.mockResolvedValue({
       data: {
         id: LIST_ID,
@@ -233,15 +233,18 @@ describe('useShoppingList — optimistic updates never fabricate timestamps', ()
     mockedApi.PATCH.mockImplementation(() => new Promise((res) => (resolvePatch = res)))
     const { result } = await renderLoadedHook()
 
+    // Both items default to SONSTIGES — move item-2 to index 0 (before item-1), same section.
     await act(async () => {
-      void result.current.moveItem('item-2', 'item-1')
+      void result.current.moveItemTo('item-2', 'SONSTIGES', 0)
     })
 
     const moved = result.current.items.find((i) => i.id === 'item-2')!
     expect(moved.sortKey.timestamp).toBe(100) // not fabricated
     expect(moved.sortKey.modifiedBy).toBe(OTHER_USER)
+    expect(moved.section.value).toBe('SONSTIGES') // unchanged — same section, no SECTION patch needed
     const newKey = moved.sortKey.value
     expect(newKey).not.toBe('c0')
+    expect(mockedApi.PATCH).toHaveBeenCalledTimes(1)
     expect(mockedApi.PATCH).toHaveBeenCalledWith(
       '/lists/{listId}/items/{itemId}',
       expect.objectContaining({
@@ -256,6 +259,92 @@ describe('useShoppingList — optimistic updates never fabricate timestamps', ()
     await waitFor(() =>
       expect(result.current.items.find((i) => i.id === 'item-2')!.sortKey.timestamp).toBe(777),
     )
+  })
+
+  it('moveItemTo across sections sends two PATCHes (SORT_KEY then SECTION) and updates both optimistically', async () => {
+    mockedApi.GET.mockResolvedValue({
+      data: {
+        id: LIST_ID,
+        name: 'Groceries',
+        items: [
+          serverItem({ section: field('OBST_GEMUESE', 100) }),
+          serverItem({
+            id: 'item-2',
+            name: field('Milch', 100),
+            sortKey: field('c0', 100),
+            section: field('MOLKEREI_EIER', 100),
+          }),
+        ],
+      },
+      error: undefined,
+    })
+    mockedApi.PATCH.mockImplementation((_path: string, opts: { body: { field: string; value: string } }) =>
+      Promise.resolve({
+        data: serverItem({
+          id: 'item-1',
+          name: field('Milk', 100),
+          [opts.body.field === 'SORT_KEY' ? 'sortKey' : 'section']: field(
+            opts.body.value,
+            888,
+            USER_ID,
+          ),
+        }),
+        error: undefined,
+      }),
+    )
+    const { result } = await renderLoadedHook()
+
+    // item-1 starts in OBST_GEMUESE; move it into MOLKEREI_EIER at index 0.
+    await act(async () => {
+      void result.current.moveItemTo('item-1', 'MOLKEREI_EIER', 0)
+    })
+
+    expect(mockedApi.PATCH).toHaveBeenCalledTimes(2)
+    const [sortCall, sectionCall] = mockedApi.PATCH.mock.calls
+    expect(sortCall[1].body.field).toBe('SORT_KEY')
+    expect(sectionCall[1].body).toEqual({
+      field: 'SECTION',
+      value: 'MOLKEREI_EIER',
+      modifiedBy: USER_ID,
+    })
+  })
+
+  it('setSection changes only the value optimistically then PATCHes SECTION', async () => {
+    let resolvePatch!: (v: unknown) => void
+    mockedApi.PATCH.mockImplementation(() => new Promise((res) => (resolvePatch = res)))
+    const { result } = await renderLoadedHook()
+
+    act(() => {
+      void result.current.setSection('item-1', 'GETRAENKE')
+    })
+
+    expect(result.current.items[0].section).toEqual({
+      value: 'GETRAENKE',
+      timestamp: 100,
+      modifiedBy: OTHER_USER,
+    })
+    expect(mockedApi.PATCH).toHaveBeenCalledWith(
+      '/lists/{listId}/items/{itemId}',
+      expect.objectContaining({
+        body: { field: 'SECTION', value: 'GETRAENKE', modifiedBy: USER_ID },
+      }),
+    )
+
+    resolvePatch({
+      data: serverItem({ section: field('GETRAENKE', 999, USER_ID) }),
+      error: undefined,
+    })
+    await waitFor(() => expect(result.current.items[0].section.timestamp).toBe(999))
+  })
+
+  it('setSection and moveItemTo do nothing without an authenticated user', async () => {
+    mocks.user = null
+    const { result } = await renderLoadedHook()
+    await act(async () => {
+      await result.current.setSection('item-1', 'GETRAENKE')
+      await result.current.moveItemTo('item-1', 'SONSTIGES', 0)
+    })
+    expect(mockedApi.PATCH).not.toHaveBeenCalled()
   })
 
   it('updateItem reconciles the PATCH response into state', async () => {
@@ -276,7 +365,7 @@ describe('useShoppingList — optimistic updates never fabricate timestamps', ()
     await act(async () => {
       await result.current.checkItem('item-1', true)
       await result.current.updateItem('item-1', 'NAME', 'x')
-      await result.current.moveItem('item-1', null)
+      await result.current.moveItemTo('item-1', 'SONSTIGES', 0)
     })
     expect(mockedApi.PATCH).not.toHaveBeenCalled()
   })

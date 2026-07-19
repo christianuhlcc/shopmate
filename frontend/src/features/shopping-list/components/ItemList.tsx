@@ -1,4 +1,18 @@
+import { useMemo } from 'react'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ItemField, ShoppingItem } from '../utils/lwwMerge'
+import { groupBySection, type SectionBucket } from '../utils/sections'
 import { ItemRow } from './ItemRow'
 
 interface ItemListProps {
@@ -6,7 +20,47 @@ interface ItemListProps {
   checkItem: (itemId: string, checked: boolean) => void
   updateItem: (itemId: string, field: ItemField, value: string) => void
   deleteItem: (itemId: string) => void
-  moveItem: (itemId: string, afterItemId: string | null) => void
+  setSection: (itemId: string, code: string) => void
+  moveItemTo: (itemId: string, targetSection: string, targetIndex: number) => void
+}
+
+/** Droppable id prefix for a section's pad, so drops onto empty pad space (not onto another item) still resolve to a section. */
+const SECTION_DROPPABLE_PREFIX = 'section:'
+
+interface SectionGroupProps {
+  bucket: SectionBucket
+  checkItem: ItemListProps['checkItem']
+  updateItem: ItemListProps['updateItem']
+  deleteItem: ItemListProps['deleteItem']
+  setSection: ItemListProps['setSection']
+}
+
+function SectionGroup({ bucket, checkItem, updateItem, deleteItem, setSection }: SectionGroupProps) {
+  const { setNodeRef } = useDroppable({ id: `${SECTION_DROPPABLE_PREFIX}${bucket.code}` })
+  const itemIds = useMemo(() => bucket.items.map((i) => i.id), [bucket.items])
+
+  return (
+    <div>
+      <h2 className="text-label font-semibold text-ink-soft px-1 mb-2">{bucket.label}</h2>
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        <ul
+          ref={setNodeRef}
+          className="bg-panel rounded-2xl border border-line divide-y divide-line overflow-hidden"
+        >
+          {bucket.items.map((item) => (
+            <ItemRow
+              key={item.id}
+              item={item}
+              checkItem={checkItem}
+              updateItem={updateItem}
+              deleteItem={deleteItem}
+              setSection={setSection}
+            />
+          ))}
+        </ul>
+      </SortableContext>
+    </div>
+  )
 }
 
 export function ItemList({
@@ -14,8 +68,41 @@ export function ItemList({
   checkItem,
   updateItem,
   deleteItem,
-  moveItem,
+  setSection,
+  moveItemTo,
 }: ItemListProps) {
+  const unchecked = items.filter((i) => !i.checked.value)
+  const checked = items.filter((i) => i.checked.value)
+  const buckets = useMemo(() => groupBySection(unchecked), [unchecked])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over) return
+    const itemId = String(active.id)
+    const overId = String(over.id)
+    if (itemId === overId) return
+
+    if (overId.startsWith(SECTION_DROPPABLE_PREFIX)) {
+      const targetSection = overId.slice(SECTION_DROPPABLE_PREFIX.length)
+      const bucket = buckets.find((b) => b.code === targetSection)
+      const targetIndex = bucket ? bucket.items.filter((i) => i.id !== itemId).length : 0
+      moveItemTo(itemId, targetSection, targetIndex)
+      return
+    }
+
+    const bucket = buckets.find((b) => b.items.some((i) => i.id === overId))
+    if (!bucket) return
+    const targetItems = bucket.items.filter((i) => i.id !== itemId)
+    const idx = targetItems.findIndex((i) => i.id === overId)
+    moveItemTo(itemId, bucket.code, idx >= 0 ? idx : targetItems.length)
+  }
+
   if (items.length === 0) {
     return (
       <div className="text-center py-16 px-6">
@@ -48,24 +135,23 @@ export function ItemList({
     )
   }
 
-  const unchecked = items.filter((i) => !i.checked.value)
-  const checked = items.filter((i) => i.checked.value)
-
   return (
     <div className="space-y-4">
       {unchecked.length > 0 && (
-        <ul className="bg-panel rounded-2xl border border-line divide-y divide-line overflow-hidden">
-          {unchecked.map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              checkItem={checkItem}
-              updateItem={updateItem}
-              deleteItem={deleteItem}
-              moveItem={moveItem}
-            />
-          ))}
-        </ul>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <div className="space-y-4">
+            {buckets.map((bucket) => (
+              <SectionGroup
+                key={bucket.code}
+                bucket={bucket}
+                checkItem={checkItem}
+                updateItem={updateItem}
+                deleteItem={deleteItem}
+                setSection={setSection}
+              />
+            ))}
+          </div>
+        </DndContext>
       )}
 
       {checked.length > 0 && (
@@ -81,7 +167,8 @@ export function ItemList({
                 checkItem={checkItem}
                 updateItem={updateItem}
                 deleteItem={deleteItem}
-                moveItem={moveItem}
+                setSection={setSection}
+                draggable={false}
               />
             ))}
           </ul>

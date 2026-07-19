@@ -1,12 +1,18 @@
 import { useRef, useState } from 'react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { ItemField, ShoppingItem } from '../utils/lwwMerge'
+import { sectionInfo } from '../utils/sections'
+import { SectionSheet } from './SectionSheet'
 
 interface ItemRowProps {
   item: ShoppingItem
   checkItem: (itemId: string, checked: boolean) => void
   updateItem: (itemId: string, field: ItemField, value: string) => void
   deleteItem: (itemId: string) => void
-  moveItem: (itemId: string, afterItemId: string | null) => void
+  setSection: (itemId: string, code: string) => void
+  /** Checked-off rows aren't part of any section's SortableContext — no handle, no drag. */
+  draggable?: boolean
 }
 
 export function ItemRow({
@@ -14,11 +20,25 @@ export function ItemRow({
   checkItem,
   updateItem,
   deleteItem,
+  setSection,
+  draggable = true,
 }: ItemRowProps) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(item.name.value)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const isChecked = item.checked.value
+
+  // Harmless when rendered outside a DndContext/SortableContext (the checked
+  // panel isn't wrapped in one) — dnd-kit's hooks fall back to inert defaults.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    disabled: !draggable,
+  })
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition ?? undefined,
+  }
 
   function handleNameClick() {
     setEditValue(item.name.value)
@@ -44,8 +64,37 @@ export function ItemRow({
     }
   }
 
+  const section = sectionInfo(item.section.value)
+
   return (
-    <li className="flex items-center gap-1 pl-2 pr-1 py-1 min-h-[3.25rem]">
+    <li
+      ref={setNodeRef}
+      style={dragStyle}
+      className={`flex items-center gap-1 pl-1 pr-1 py-1 min-h-[3.25rem] ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      {/* Drag handle — dedicated so it never collides with name-tap-to-edit or checkbox-tap-to-check */}
+      {draggable && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Reorder ${item.name.value || 'item'}`}
+          style={{ touchAction: 'none' }}
+          className="pressable flex-shrink-0 min-h-touch min-w-touch flex items-center justify-center rounded-full text-ink-mute hover:text-ink-soft cursor-grab active:cursor-grabbing"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
+            <circle cx="3" cy="2" r="1.4" />
+            <circle cx="9" cy="2" r="1.4" />
+            <circle cx="3" cy="8" r="1.4" />
+            <circle cx="9" cy="8" r="1.4" />
+            <circle cx="3" cy="14" r="1.4" />
+            <circle cx="9" cy="14" r="1.4" />
+          </svg>
+        </button>
+      )}
+
       {/* Checkbox — 44px hit area around a 26px circle */}
       <button
         type="button"
@@ -107,6 +156,20 @@ export function ItemRow({
         )}
       </div>
 
+      {/* Section — small tappable affordance opening the reassignment sheet */}
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        aria-label={`Change section, currently ${section.label}`}
+        className={`pressable flex-shrink-0 max-w-[6rem] truncate min-h-touch px-2.5 py-1 rounded-full border text-label font-semibold ${
+          isChecked
+            ? 'border-line text-ink-mute'
+            : 'border-line text-ink-soft hover:border-marigold-deep/50'
+        }`}
+      >
+        {section.label}
+      </button>
+
       {/* Quantity */}
       {item.quantity.value && item.quantity.value !== '1' && (
         <span
@@ -136,6 +199,17 @@ export function ItemRow({
           />
         </svg>
       </button>
+
+      {sheetOpen && (
+        <SectionSheet
+          currentSection={item.section.value}
+          onSelect={(code) => {
+            setSection(item.id, code)
+            setSheetOpen(false)
+          }}
+          onClose={() => setSheetOpen(false)}
+        />
+      )}
     </li>
   )
 }

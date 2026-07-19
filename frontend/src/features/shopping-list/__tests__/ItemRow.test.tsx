@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { DndContext } from '@dnd-kit/core'
+import { SortableContext } from '@dnd-kit/sortable'
 import { ItemRow } from '../components/ItemRow'
 import type { ShoppingItem } from '../utils/lwwMerge'
 
@@ -26,10 +28,36 @@ function renderRow(item: ShoppingItem, overrides: Partial<Parameters<typeof Item
     checkItem: vi.fn(),
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
-    moveItem: vi.fn(),
+    setSection: vi.fn(),
     ...overrides,
   }
   render(<ItemRow {...props} />)
+  return props
+}
+
+/** Renders inside a real DndContext + SortableContext so the KeyboardSensor's handle wiring is exercised. */
+function renderSortableRow(
+  item: ShoppingItem,
+  overrides: Partial<Parameters<typeof ItemRow>[0]> = {},
+  onDragEnd: (event: unknown) => void = () => {},
+) {
+  const props = {
+    item,
+    checkItem: vi.fn(),
+    updateItem: vi.fn(),
+    deleteItem: vi.fn(),
+    setSection: vi.fn(),
+    ...overrides,
+  }
+  render(
+    <DndContext onDragEnd={onDragEnd}>
+      <SortableContext items={[item.id, 'other-item']}>
+        <ul>
+          <ItemRow {...props} />
+        </ul>
+      </SortableContext>
+    </DndContext>,
+  )
   return props
 }
 
@@ -119,5 +147,62 @@ describe('ItemRow', () => {
     const item = makeItem({ quantity: { value: '3', timestamp: 100, modifiedBy: USER_ID } })
     renderRow(item)
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('shows a drag handle by default', () => {
+    renderRow(makeItem())
+    expect(screen.getByRole('button', { name: /reorder milk/i })).toBeInTheDocument()
+  })
+
+  it('omits the drag handle when draggable is false (checked panel rows)', () => {
+    renderRow(makeItem(), { draggable: false })
+    expect(screen.queryByRole('button', { name: /reorder/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the section chip with the current section label', () => {
+    const item = makeItem({ section: { value: 'GETRAENKE', timestamp: 100, modifiedBy: USER_ID } })
+    renderRow(item)
+    expect(screen.getByRole('button', { name: /change section, currently getränke/i })).toBeInTheDocument()
+  })
+
+  it('falls back to Sonstiges label for an unknown section code', () => {
+    const item = makeItem({ section: { value: 'NOT_A_CODE', timestamp: 100, modifiedBy: USER_ID } })
+    renderRow(item)
+    expect(screen.getByRole('button', { name: /change section, currently sonstiges/i })).toBeInTheDocument()
+  })
+
+  it('opens the SectionSheet when the section chip is tapped, and closes on select', async () => {
+    const user = userEvent.setup()
+    const { setSection } = renderRow(makeItem())
+    await user.click(screen.getByRole('button', { name: /change section/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /obst & gemüse/i }))
+    expect(setSection).toHaveBeenCalledWith('item-1', 'OBST_GEMUESE')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  describe('drag handle wiring (keyboard sensor)', () => {
+    it('gives the handle sortable a11y attributes', () => {
+      renderSortableRow(makeItem())
+      const handle = screen.getByRole('button', { name: /reorder milk/i })
+      expect(handle).toHaveAttribute('aria-roledescription', 'sortable')
+      expect(handle).toHaveAttribute('tabindex', '0')
+    })
+
+    it('activating the keyboard sensor (Space) marks the handle as pressed/dragging', () => {
+      renderSortableRow(makeItem())
+      const handle = screen.getByRole('button', { name: /reorder milk/i })
+      handle.focus()
+      fireEvent.keyDown(handle, { code: 'Space' })
+      expect(handle).toHaveAttribute('aria-pressed', 'true')
+      // End the drag (drop) so the sensor cleans up its listeners.
+      fireEvent.keyDown(handle, { code: 'Space' })
+    })
+
+    it('does not wire keyboard drag attributes when draggable is false', () => {
+      renderRow(makeItem(), { draggable: false })
+      expect(screen.queryByRole('button', { name: /reorder/i })).not.toBeInTheDocument()
+    })
   })
 })
