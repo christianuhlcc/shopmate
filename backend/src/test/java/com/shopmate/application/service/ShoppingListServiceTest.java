@@ -14,6 +14,8 @@ import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.domain.port.out.EventPublisher;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
+import com.shopmate.domain.section.SectionClassifier;
+import com.shopmate.domain.section.SectionDictionary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,7 +58,8 @@ class ShoppingListServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ShoppingListService(listRepository, userRepository, eventPublisher);
+        SectionClassifier sectionClassifier = new SectionClassifier(new SectionDictionary());
+        service = new ShoppingListService(listRepository, userRepository, eventPublisher, sectionClassifier);
     }
 
     private ShoppingList listWithNItems(int n) {
@@ -70,6 +73,7 @@ class ShoppingListServiceTest {
                 new LwwField<>(false, 100L, OWNER_ID),
                 new LwwField<>(false, 100L, OWNER_ID),
                 new LwwField<>(c + "0", 100L, OWNER_ID),
+                new LwwField<>("SONSTIGES", 100L, OWNER_ID),
                 Map.of()));
         }
         return new ShoppingList(LIST_ID, "Test List", OWNER_ID,
@@ -179,7 +183,7 @@ class ShoppingListServiceTest {
     }
 
     @Test
-    void addItemPublishesAllFiveFieldChanges() {
+    void addItemPublishesAllSixFieldChanges() {
         when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
         when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -187,21 +191,22 @@ class ShoppingListServiceTest {
         ShoppingItem item = saved.items().values().iterator().next();
 
         ArgumentCaptor<ItemChange> captor = ArgumentCaptor.forClass(ItemChange.class);
-        verify(eventPublisher, times(5)).publishItemChange(eq(LIST_ID), captor.capture());
+        verify(eventPublisher, times(6)).publishItemChange(eq(LIST_ID), captor.capture());
 
         List<ItemChange> changes = captor.getAllValues();
         Map<ItemField, ItemChange> byField = changes.stream()
             .collect(Collectors.toMap(ItemChange::field, Function.identity()));
 
         assertThat(byField.keySet()).containsExactlyInAnyOrder(
-            ItemField.NAME, ItemField.QUANTITY, ItemField.CHECKED, ItemField.DELETED, ItemField.SORT_KEY);
+            ItemField.NAME, ItemField.QUANTITY, ItemField.CHECKED, ItemField.DELETED, ItemField.SORT_KEY, ItemField.SECTION);
         assertThat(byField.get(ItemField.NAME).serializedValue()).isEqualTo("Milk");
         assertThat(byField.get(ItemField.QUANTITY).serializedValue()).isEqualTo("2");
         assertThat(byField.get(ItemField.CHECKED).serializedValue()).isEqualTo("false");
         assertThat(byField.get(ItemField.DELETED).serializedValue()).isEqualTo("false");
         assertThat(byField.get(ItemField.SORT_KEY).serializedValue()).isEqualTo(item.sortKey().value());
+        assertThat(byField.get(ItemField.SECTION).serializedValue()).isEqualTo(item.section().value());
 
-        // All five changes share the item's server-assigned timestamp, id, and author
+        // All six changes share the item's server-assigned timestamp, id, and author
         long ts = item.name().timestamp();
         assertThat(changes).allSatisfy(c -> {
             assertThat(c.timestamp()).isEqualTo(ts);
@@ -219,11 +224,42 @@ class ShoppingListServiceTest {
         service.addItem(LIST_ID, "Eggs", null, OWNER_ID);
 
         ArgumentCaptor<ItemChange> captor = ArgumentCaptor.forClass(ItemChange.class);
-        verify(eventPublisher, times(5)).publishItemChange(eq(LIST_ID), captor.capture());
+        verify(eventPublisher, times(6)).publishItemChange(eq(LIST_ID), captor.capture());
         ItemChange qty = captor.getAllValues().stream()
             .filter(c -> c.field() == ItemField.QUANTITY)
             .findFirst().orElseThrow();
         assertThat(qty.serializedValue()).isEqualTo("1");
+    }
+
+    @Test
+    void addItemClassifiesKirschtomatenAsObstGemuese() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList saved = service.addItem(LIST_ID, "Kirschtomaten", "1", OWNER_ID);
+
+        ShoppingItem item = saved.items().values().iterator().next();
+        assertThat(item.section().value()).isEqualTo("OBST_GEMUESE");
+    }
+
+    @Test
+    void applyItemChangeRejectsUnknownSectionCode() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.SECTION, "NOT_A_SECTION", 100L, OWNER_ID);
+        assertThatThrownBy(() -> service.applyItemChange(LIST_ID, change, OWNER_ID))
+            .isInstanceOf(InvalidItemException.class);
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void applyItemChangeAcceptsValidSectionCode() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.SECTION, "GETRAENKE", 100L, OWNER_ID);
+
+        ShoppingList saved = service.applyItemChange(LIST_ID, change, OWNER_ID);
+
+        assertThat(saved.items().get(change.itemId()).section().value()).isEqualTo("GETRAENKE");
     }
 
     @Test

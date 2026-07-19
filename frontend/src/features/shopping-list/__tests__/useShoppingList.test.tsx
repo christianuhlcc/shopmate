@@ -77,6 +77,7 @@ function serverItem(overrides: Record<string, unknown> = {}) {
     checked: field(false, 100),
     deleted: field(false, 100),
     sortKey: field('b0', 100),
+    section: field('SONSTIGES', 100),
     ...overrides,
   }
 }
@@ -136,6 +137,7 @@ describe('useShoppingList — initial load', () => {
     expect(result.current.listName).toBe('Groceries')
     expect(result.current.items).toHaveLength(1)
     expect(result.current.items[0].name.value).toBe('Milk')
+    expect(result.current.items[0].section.value).toBe('SONSTIGES')
   })
 
   it('sets error when the API returns an error', async () => {

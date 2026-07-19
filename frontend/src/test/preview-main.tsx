@@ -29,7 +29,12 @@ function lww<T>(value: T) {
   return { value, timestamp: 1700000000000, modifiedBy: 'u1' }
 }
 
-function makeItem(id: string, name: string, sortKey: string, opts: { qty?: string; checked?: boolean } = {}) {
+function makeItem(
+  id: string,
+  name: string,
+  sortKey: string,
+  opts: { qty?: string; checked?: boolean; section?: string } = {},
+) {
   return {
     id,
     listId: 'l1',
@@ -38,6 +43,7 @@ function makeItem(id: string, name: string, sortKey: string, opts: { qty?: strin
     checked: lww(opts.checked ?? false),
     deleted: lww(false),
     sortKey: lww(sortKey),
+    section: lww(opts.section ?? 'SONSTIGES'),
   }
 }
 

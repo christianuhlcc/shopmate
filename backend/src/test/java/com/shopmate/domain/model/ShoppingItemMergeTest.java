@@ -23,6 +23,7 @@ class ShoppingItemMergeTest {
             new LwwField<>(false, ts, USER_A),
             new LwwField<>(false, ts, USER_A),
             new LwwField<>("a0", ts, USER_A),
+            new LwwField<>("SONSTIGES", ts, USER_A),
             Map.of()
         );
     }
@@ -93,8 +94,17 @@ class ShoppingItemMergeTest {
             new LwwField<>(false, 100L, USER_A),
             new LwwField<>(false, 100L, USER_A),
             new LwwField<>("a0", 100L, USER_A),
+            new LwwField<>("SONSTIGES", 100L, USER_A),
             Map.of());
         assertThatThrownBy(() -> itemA.merge(itemB))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void concurrentEditsToSectionHigherTimestampWins() {
+        var itemA = baseItem(100L).applyChange(new ItemChange(ITEM_ID, LIST_ID, ItemField.SECTION, "OBST_GEMUESE", 200L, USER_A));
+        var itemB = baseItem(100L).applyChange(new ItemChange(ITEM_ID, LIST_ID, ItemField.SECTION, "GETRAENKE", 300L, USER_B));
+        var merged = itemA.merge(itemB);
+        assertThat(merged.section().value()).isEqualTo("GETRAENKE");
     }
 }

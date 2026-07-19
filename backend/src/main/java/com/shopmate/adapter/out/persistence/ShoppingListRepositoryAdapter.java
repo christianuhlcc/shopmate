@@ -109,6 +109,11 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
             entity.setSortKeyTs(domain.sortKey().timestamp());
             entity.setSortKeyModifiedBy(domain.sortKey().modifiedBy());
         }
+        if (domain.section().timestamp() > entity.getSectionTs()) {
+            entity.setSectionValue(domain.section().value());
+            entity.setSectionTs(domain.section().timestamp());
+            entity.setSectionModifiedBy(domain.section().modifiedBy());
+        }
     }
 
     ShoppingList toDomain(ShoppingListEntity e) {
@@ -136,6 +141,7 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
             new LwwField<>(e.isCheckedValue(), e.getCheckedTs(), e.getCheckedModifiedBy()),
             new LwwField<>(e.isDeletedValue(), e.getDeletedTs(), e.getDeletedModifiedBy()),
             new LwwField<>(e.getSortKeyValue(), e.getSortKeyTs(), e.getSortKeyModifiedBy()),
+            new LwwField<>(e.getSectionValue(), e.getSectionTs(), e.getSectionModifiedBy()),
             Map.of()
         );
     }
@@ -147,7 +153,8 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
             d.quantity().value(), d.quantity().timestamp(), d.quantity().modifiedBy(),
             d.checked().value(), d.checked().timestamp(), d.checked().modifiedBy(),
             d.deleted().value(), d.deleted().timestamp(), d.deleted().modifiedBy(),
-            d.sortKey().value(), d.sortKey().timestamp(), d.sortKey().modifiedBy()
+            d.sortKey().value(), d.sortKey().timestamp(), d.sortKey().modifiedBy(),
+            d.section().value(), d.section().timestamp(), d.section().modifiedBy()
         );
     }
 }

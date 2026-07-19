@@ -61,6 +61,14 @@ public class ShoppingItemEntity {
     @Column(name = "sort_key_modified_by", nullable = false)
     private UUID sortKeyModifiedBy;
 
+    // section LWW field
+    @Column(name = "section_value", nullable = false)
+    private String sectionValue;
+    @Column(name = "section_ts", nullable = false)
+    private long sectionTs;
+    @Column(name = "section_modified_by", nullable = false)
+    private UUID sectionModifiedBy;
+
     protected ShoppingItemEntity() {}
 
     public ShoppingItemEntity(UUID id, ShoppingListEntity list,
@@ -68,7 +76,8 @@ public class ShoppingItemEntity {
                                String quantityValue, long quantityTs, UUID quantityModifiedBy,
                                boolean checkedValue, long checkedTs, UUID checkedModifiedBy,
                                boolean deletedValue, long deletedTs, UUID deletedModifiedBy,
-                               String sortKeyValue, long sortKeyTs, UUID sortKeyModifiedBy) {
+                               String sortKeyValue, long sortKeyTs, UUID sortKeyModifiedBy,
+                               String sectionValue, long sectionTs, UUID sectionModifiedBy) {
         this.id = id;
         this.list = list;
         this.nameValue = nameValue;
@@ -86,6 +95,9 @@ public class ShoppingItemEntity {
         this.sortKeyValue = sortKeyValue;
         this.sortKeyTs = sortKeyTs;
         this.sortKeyModifiedBy = sortKeyModifiedBy;
+        this.sectionValue = sectionValue;
+        this.sectionTs = sectionTs;
+        this.sectionModifiedBy = sectionModifiedBy;
     }
 
     public UUID getId() { return id; }
@@ -111,6 +123,10 @@ public class ShoppingItemEntity {
     public long getSortKeyTs() { return sortKeyTs; }
     public UUID getSortKeyModifiedBy() { return sortKeyModifiedBy; }
 
+    public String getSectionValue() { return sectionValue; }
+    public long getSectionTs() { return sectionTs; }
+    public UUID getSectionModifiedBy() { return sectionModifiedBy; }
+
     public void setNameValue(String v) { nameValue = v; }
     public void setNameTs(long v) { nameTs = v; }
     public void setNameModifiedBy(UUID v) { nameModifiedBy = v; }
@@ -126,4 +142,7 @@ public class ShoppingItemEntity {
     public void setSortKeyValue(String v) { sortKeyValue = v; }
     public void setSortKeyTs(long v) { sortKeyTs = v; }
     public void setSortKeyModifiedBy(UUID v) { sortKeyModifiedBy = v; }
+    public void setSectionValue(String v) { sectionValue = v; }
+    public void setSectionTs(long v) { sectionTs = v; }
+    public void setSectionModifiedBy(UUID v) { sectionModifiedBy = v; }
 }

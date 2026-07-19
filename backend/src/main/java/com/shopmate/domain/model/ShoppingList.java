@@ -54,8 +54,9 @@ public record ShoppingList(
         LwwField<Boolean> checked = new LwwField<>(false, 0L, by);
         LwwField<Boolean> deleted = new LwwField<>(false, 0L, by);
         LwwField<String> sortKey = new LwwField<>("a0", 0L, by);
+        LwwField<String> section = new LwwField<>("SONSTIGES", 0L, by);
         ShoppingItem item = new ShoppingItem(change.itemId(), change.listId(),
-            name, quantity, checked, deleted, sortKey, Map.of());
+            name, quantity, checked, deleted, sortKey, section, Map.of());
         return item.applyChange(change);
     }
 }

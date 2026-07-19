@@ -171,7 +171,8 @@ public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
                 toLwwStringDto(item.quantity()),
                 toLwwBooleanDto(item.checked()),
                 toLwwBooleanDto(item.deleted()),
-                toLwwStringDto(item.sortKey()));
+                toLwwStringDto(item.sortKey()),
+                toLwwStringDto(item.section()));
     }
 
     private LwwFieldString toLwwStringDto(com.shopmate.domain.model.LwwField<String> f) {
@@ -197,6 +198,7 @@ public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
             case CHECKED -> ItemField.CHECKED;
             case DELETED -> ItemField.DELETED;
             case SORT_KEY -> ItemField.SORT_KEY;
+            case SECTION -> ItemField.SECTION;
         };
     }
 }

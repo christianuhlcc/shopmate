@@ -23,6 +23,7 @@ function toClientItem(raw: {
   checked: { value: boolean; timestamp: number; modifiedBy: string }
   deleted: { value: boolean; timestamp: number; modifiedBy: string }
   sortKey: { value: string; timestamp: number; modifiedBy: string }
+  section: { value: string; timestamp: number; modifiedBy: string }
 }): ShoppingItem {
   return {
     id: raw.id,
@@ -32,6 +33,7 @@ function toClientItem(raw: {
     checked: raw.checked,
     deleted: raw.deleted,
     sortKey: raw.sortKey,
+    section: raw.section,
   }
 }
 

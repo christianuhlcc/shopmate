@@ -17,6 +17,7 @@ public record ShoppingItem(
     LwwField<Boolean> checked,
     LwwField<Boolean> deleted,
     LwwField<String> sortKey,
+    LwwField<String> section,
     Map<UUID, Long> vectorClock
 ) {
 
@@ -31,6 +32,7 @@ public record ShoppingItem(
             checked.merge(other.checked()),
             deleted.merge(other.deleted()),
             sortKey.merge(other.sortKey()),
+            section.merge(other.section()),
             mergeVectorClocks(vectorClock, other.vectorClock())
         );
     }
@@ -39,18 +41,21 @@ public record ShoppingItem(
         return switch (change.field()) {
             case NAME -> new ShoppingItem(id, listId,
                 name.merge(new LwwField<>(change.serializedValue(), change.timestamp(), change.modifiedBy())),
-                quantity, checked, deleted, sortKey, vectorClock);
+                quantity, checked, deleted, sortKey, section, vectorClock);
             case QUANTITY -> new ShoppingItem(id, listId, name,
                 quantity.merge(new LwwField<>(change.serializedValue(), change.timestamp(), change.modifiedBy())),
-                checked, deleted, sortKey, vectorClock);
+                checked, deleted, sortKey, section, vectorClock);
             case CHECKED -> new ShoppingItem(id, listId, name, quantity,
                 checked.merge(new LwwField<>(Boolean.parseBoolean(change.serializedValue()), change.timestamp(), change.modifiedBy())),
-                deleted, sortKey, vectorClock);
+                deleted, sortKey, section, vectorClock);
             case DELETED -> new ShoppingItem(id, listId, name, quantity, checked,
                 deleted.merge(new LwwField<>(Boolean.parseBoolean(change.serializedValue()), change.timestamp(), change.modifiedBy())),
-                sortKey, vectorClock);
+                sortKey, section, vectorClock);
             case SORT_KEY -> new ShoppingItem(id, listId, name, quantity, checked, deleted,
                 sortKey.merge(new LwwField<>(change.serializedValue(), change.timestamp(), change.modifiedBy())),
+                section, vectorClock);
+            case SECTION -> new ShoppingItem(id, listId, name, quantity, checked, deleted, sortKey,
+                section.merge(new LwwField<>(change.serializedValue(), change.timestamp(), change.modifiedBy())),
                 vectorClock);
         };
     }

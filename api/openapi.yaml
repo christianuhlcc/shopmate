@@ -445,7 +445,7 @@ components:
 
     ShoppingItem:
       type: object
-      required: [id, listId, name, quantity, checked, deleted, sortKey]
+      required: [id, listId, name, quantity, checked, deleted, sortKey, section]
       properties:
         id:
           type: string
@@ -467,6 +467,12 @@ components:
           allOf:
             - $ref: '#/components/schemas/LwwFieldString'
           description: Fractional index for display ordering. Update via PATCH with field=SORT_KEY.
+        section:
+          allOf:
+            - $ref: '#/components/schemas/LwwFieldString'
+          description: >-
+            Supermarket section code (server-classified at creation). Update via
+            PATCH with field=SECTION; value must be a known Section enum code.
 
     ItemChangeRequest:
       type: object
@@ -511,7 +517,7 @@ components:
 
     ItemField:
       type: string
-      enum: [NAME, QUANTITY, CHECKED, DELETED, SORT_KEY]
+      enum: [NAME, QUANTITY, CHECKED, DELETED, SORT_KEY, SECTION]
 
     AddItemRequest:
       type: object

@@ -16,6 +16,8 @@ import com.shopmate.domain.port.in.ShoppingListUseCase;
 import com.shopmate.domain.port.out.EventPublisher;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
+import com.shopmate.domain.section.Section;
+import com.shopmate.domain.section.SectionClassifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -35,13 +37,16 @@ public class ShoppingListService implements ShoppingListUseCase {
     private final ShoppingListRepository listRepository;
     private final UserRepository userRepository;
     private final EventPublisher eventPublisher;
+    private final SectionClassifier sectionClassifier;
 
     public ShoppingListService(ShoppingListRepository listRepository,
                                 UserRepository userRepository,
-                                EventPublisher eventPublisher) {
+                                EventPublisher eventPublisher,
+                                SectionClassifier sectionClassifier) {
         this.listRepository = listRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
+        this.sectionClassifier = sectionClassifier;
     }
 
     @Override
@@ -93,14 +98,17 @@ public class ShoppingListService implements ShoppingListUseCase {
             : list.activeItems().getLast().sortKey().value();
         String sortKey = FractionalIndex.append(lastSortKey);
 
+        Section section = sectionClassifier.classify(name);
+
         LwwField<String> nameFld = new LwwField<>(name, ts, requestingUserId);
         LwwField<String> qtyFld = new LwwField<>(quantity != null ? quantity : "1", ts, requestingUserId);
         LwwField<Boolean> checkedFld = new LwwField<>(false, ts, requestingUserId);
         LwwField<Boolean> deletedFld = new LwwField<>(false, ts, requestingUserId);
         LwwField<String> sortKeyFld = new LwwField<>(sortKey, ts, requestingUserId);
+        LwwField<String> sectionFld = new LwwField<>(section.name(), ts, requestingUserId);
 
         ShoppingItem newItem = new ShoppingItem(itemId, listId,
-            nameFld, qtyFld, checkedFld, deletedFld, sortKeyFld, Map.of());
+            nameFld, qtyFld, checkedFld, deletedFld, sortKeyFld, sectionFld, Map.of());
 
         Map<UUID, ShoppingItem> newItems = new HashMap<>(list.items());
         newItems.put(itemId, newItem);
@@ -120,6 +128,8 @@ public class ShoppingListService implements ShoppingListUseCase {
             new ItemChange(itemId, listId, ItemField.DELETED, String.valueOf(deletedFld.value()), ts, requestingUserId));
         eventPublisher.publishItemChange(listId,
             new ItemChange(itemId, listId, ItemField.SORT_KEY, sortKeyFld.value(), ts, requestingUserId));
+        eventPublisher.publishItemChange(listId,
+            new ItemChange(itemId, listId, ItemField.SECTION, sectionFld.value(), ts, requestingUserId));
 
         return saved;
     }
@@ -133,6 +143,13 @@ public class ShoppingListService implements ShoppingListUseCase {
             String val = change.serializedValue();
             if (val == null || val.isBlank()) throw new InvalidItemException("Name must not be blank");
             if (val.length() > MAX_NAME_LENGTH) throw new InvalidItemException("Name must not exceed " + MAX_NAME_LENGTH + " characters");
+        }
+
+        if (change.field() == ItemField.SECTION) {
+            String val = change.serializedValue();
+            if (val == null || !Section.fromCode(val).name().equals(val)) {
+                throw new InvalidItemException("Unknown section code: " + val);
+            }
         }
 
         ShoppingList updated = list.applyChange(change);

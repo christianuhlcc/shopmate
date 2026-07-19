@@ -5,5 +5,6 @@ public enum ItemField {
     QUANTITY,
     CHECKED,
     DELETED,
-    SORT_KEY
+    SORT_KEY,
+    SECTION
 }

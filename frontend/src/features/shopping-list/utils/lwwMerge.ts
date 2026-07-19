@@ -12,9 +12,10 @@ export interface ShoppingItem {
   checked: LwwField<boolean>
   deleted: LwwField<boolean>
   sortKey: LwwField<string>
+  section: LwwField<string>
 }
 
-export type ItemField = 'NAME' | 'QUANTITY' | 'CHECKED' | 'DELETED' | 'SORT_KEY'
+export type ItemField = 'NAME' | 'QUANTITY' | 'CHECKED' | 'DELETED' | 'SORT_KEY' | 'SECTION'
 
 export interface ItemChangeEvent {
   itemId: string
@@ -51,6 +52,7 @@ export function mergeItem(existing: ShoppingItem, incoming: ShoppingItem): Shopp
     checked: mergeLwwField(existing.checked, incoming.checked),
     deleted: mergeLwwField(existing.deleted, incoming.deleted),
     sortKey: mergeLwwField(existing.sortKey, incoming.sortKey),
+    section: mergeLwwField(existing.section, incoming.section),
   }
 }
 
@@ -72,6 +74,7 @@ function makeDefaultItem(itemId: string, listId: string): ShoppingItem {
     checked: { ...emptyBool },
     deleted: { ...emptyBool },
     sortKey: { ...emptyString },
+    section: { value: 'SONSTIGES', timestamp: 0, modifiedBy: '' },
   }
 }
 
@@ -116,6 +119,12 @@ export function applyChange(
       break
     case 'SORT_KEY':
       item.sortKey = mergeLwwField(item.sortKey, {
+        value: change.value,
+        ...incoming,
+      })
+      break
+    case 'SECTION':
+      item.section = mergeLwwField(item.section, {
         value: change.value,
         ...incoming,
       })

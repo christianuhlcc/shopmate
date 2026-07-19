@@ -30,6 +30,14 @@ class ShoppingListApplyChangeTest {
     }
 
     @Test
+    void newItemFromChangeSeedsSectionAsSonstiges() {
+        var list = emptyList();
+        var change = new ItemChange(ITEM_ID, LIST_ID, ItemField.NAME, "Milk", 100L, OWNER);
+        var updated = list.applyChange(change);
+        assertThat(updated.items().get(ITEM_ID).section().value()).isEqualTo("SONSTIGES");
+    }
+
+    @Test
     void applyChangeToExistingItemMerges() {
         var list = emptyList();
         var first = new ItemChange(ITEM_ID, LIST_ID, ItemField.NAME, "Milk", 100L, OWNER);
@@ -62,6 +70,7 @@ class ShoppingListApplyChangeTest {
             new LwwField<>(false, 100L, OWNER),
             new LwwField<>(false, 100L, OWNER),
             new LwwField<>("b0", 100L, OWNER),
+            new LwwField<>("SONSTIGES", 100L, OWNER),
             Map.of());
         var itemB = new ShoppingItem(idB, LIST_ID,
             new LwwField<>("Eggs", 100L, OWNER),
@@ -69,6 +78,7 @@ class ShoppingListApplyChangeTest {
             new LwwField<>(false, 100L, OWNER),
             new LwwField<>(false, 100L, OWNER),
             new LwwField<>("a0", 100L, OWNER),
+            new LwwField<>("SONSTIGES", 100L, OWNER),
             Map.of());
         Map<UUID, ShoppingItem> items = new HashMap<>();
         items.put(idA, itemA);

@@ -131,7 +131,8 @@ class ShoppingListRepositoryAdapterIT {
                 new ItemChange(itemId, listId, ItemField.QUANTITY, "3", ts, owner.id()),
                 new ItemChange(itemId, listId, ItemField.CHECKED, "true", ts + 1, owner.id()),
                 new ItemChange(itemId, listId, ItemField.DELETED, "true", ts + 2, owner.id()),
-                new ItemChange(itemId, listId, ItemField.SORT_KEY, "m5", ts + 3, owner.id()))) {
+                new ItemChange(itemId, listId, ItemField.SORT_KEY, "m5", ts + 3, owner.id()),
+                new ItemChange(itemId, listId, ItemField.SECTION, "GETRAENKE", ts + 4, owner.id()))) {
             listRepository.save(listRepository.findById(listId).get().applyChange(change));
         }
 
@@ -140,5 +141,37 @@ class ShoppingListRepositoryAdapterIT {
         assertThat(item.checked().value()).isTrue();
         assertThat(item.deleted().value()).isTrue();
         assertThat(item.sortKey().value()).isEqualTo("m5");
+        assertThat(item.section().value()).isEqualTo("GETRAENKE");
+    }
+
+    @Test
+    void sectionDefaultsToSonstigesAndRoundTrips() {
+        User owner = userRepository.save(new User(UUID.randomUUID(), "section@test.com", "Section User", null));
+        UUID listId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+
+        ShoppingList list = listRepository.save(new ShoppingList(
+            listId, "Section Test", owner.id(),
+            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+
+        listRepository.save(list.applyChange(
+            new ItemChange(itemId, listId, ItemField.NAME, "Milch", 100L, owner.id())));
+
+        var seeded = listRepository.findById(listId).get().items().get(itemId);
+        assertThat(seeded.section().value()).isEqualTo("SONSTIGES");
+
+        // A newer SECTION change wins the LWW merge-at-save
+        listRepository.save(listRepository.findById(listId).get().applyChange(
+            new ItemChange(itemId, listId, ItemField.SECTION, "MOLKEREI_EIER", 200L, owner.id())));
+
+        var updated = listRepository.findById(listId).get().items().get(itemId);
+        assertThat(updated.section().value()).isEqualTo("MOLKEREI_EIER");
+
+        // A stale SECTION change must not overwrite the newer one (merge-at-save timestamp semantics)
+        listRepository.save(listRepository.findById(listId).get().applyChange(
+            new ItemChange(itemId, listId, ItemField.SECTION, "SONSTIGES", 150L, owner.id())));
+
+        var afterStale = listRepository.findById(listId).get().items().get(itemId);
+        assertThat(afterStale.section().value()).isEqualTo("MOLKEREI_EIER");
     }
 }

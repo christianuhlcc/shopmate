@@ -32,6 +32,7 @@ function makeItem(overrides: Partial<ShoppingItem> = {}): ShoppingItem {
     checked: makeBoolField(false, 100, USER_A),
     deleted: makeBoolField(false, 100, USER_A),
     sortKey: makeStringField('m', 100, USER_A),
+    section: makeStringField('SONSTIGES', 100, USER_A),
     ...overrides,
   }
 }
@@ -90,6 +91,7 @@ describe('mergeItem', () => {
       checked: makeBoolField(true, 500, USER_B),
       deleted: makeBoolField(true, 500, USER_B),
       sortKey: makeStringField('z', 500, USER_B),
+      section: makeStringField('GETRAENKE', 500, USER_B),
     })
     const merged = mergeItem(existing, incoming)
     expect(merged.name).toEqual(incoming.name)
@@ -97,6 +99,7 @@ describe('mergeItem', () => {
     expect(merged.checked).toEqual(incoming.checked)
     expect(merged.deleted).toEqual(incoming.deleted)
     expect(merged.sortKey).toEqual(incoming.sortKey)
+    expect(merged.section).toEqual(incoming.section)
   })
 
   it('does not let a stale incoming item overwrite newer local fields', () => {
@@ -128,6 +131,7 @@ describe('applyChange', () => {
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('new-item')
     expect(result[0].name.value).toBe('Eggs')
+    expect(result[0].section.value).toBe('SONSTIGES') // default seed until the SECTION event arrives
   })
 
   it('merges NAME change into existing item — higher timestamp wins', () => {
@@ -214,6 +218,34 @@ describe('applyChange', () => {
     expect(result[0].sortKey.value).toBe('p')
   })
 
+  it('applies SECTION change', () => {
+    const item = makeItem()
+    const change: ItemChangeEvent = {
+      itemId: ITEM_ID,
+      listId: LIST_ID,
+      field: 'SECTION',
+      value: 'GETRAENKE',
+      timestamp: 200,
+      modifiedBy: USER_A,
+    }
+    const result = applyChange([item], change)
+    expect(result[0].section.value).toBe('GETRAENKE')
+  })
+
+  it('does not overwrite a newer SECTION with a stale correction', () => {
+    const item = makeItem({ section: makeStringField('GETRAENKE', 300, USER_A) })
+    const stale: ItemChangeEvent = {
+      itemId: ITEM_ID,
+      listId: LIST_ID,
+      field: 'SECTION',
+      value: 'SONSTIGES',
+      timestamp: 200,
+      modifiedBy: USER_B,
+    }
+    const result = applyChange([item], stale)
+    expect(result[0].section.value).toBe('GETRAENKE')
+  })
+
   it('concurrent SORT_KEY moves converge to one position (higher timestamp wins)', () => {
     const item = makeItem()
 
@@ -254,6 +286,7 @@ describe('parseValue', () => {
   it('passes string fields through', () => {
     expect(parseValue('NAME', 'Milk')).toBe('Milk')
     expect(parseValue('SORT_KEY', 'b0')).toBe('b0')
+    expect(parseValue('SECTION', 'OBST_GEMUESE')).toBe('OBST_GEMUESE')
   })
 })
 

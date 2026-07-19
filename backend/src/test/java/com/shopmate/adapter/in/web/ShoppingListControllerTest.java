@@ -64,6 +64,7 @@ class ShoppingListControllerTest {
             new LwwField<>(false, 100L, USER_ID),
             new LwwField<>(false, 100L, USER_ID),
             new LwwField<>("a0", 100L, USER_ID),
+            new LwwField<>("SONSTIGES", 100L, USER_ID),
             Map.of());
     }
 
@@ -126,6 +127,7 @@ class ShoppingListControllerTest {
         assertThat(itemDto.getName().getModifiedBy()).isEqualTo(USER_ID);
         assertThat(itemDto.getChecked().getValue()).isFalse();
         assertThat(itemDto.getSortKey().getValue()).isEqualTo("a0");
+        assertThat(itemDto.getSection().getValue()).isEqualTo("SONSTIGES");
     }
 
     @Test
@@ -138,6 +140,7 @@ class ShoppingListControllerTest {
             new LwwField<>(false, 50L, USER_ID),
             new LwwField<>(false, 50L, USER_ID),
             new LwwField<>("b0", 50L, USER_ID),
+            new LwwField<>("BROT_BACKWAREN", 50L, USER_ID),
             Map.of());
         when(shoppingListUseCase.addItem(LIST_ID, "Milk", "3", USER_ID))
             .thenReturn(list(Map.of(ITEM_ID, milk, otherItemId, bread)));

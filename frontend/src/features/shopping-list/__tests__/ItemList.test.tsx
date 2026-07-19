@@ -14,6 +14,7 @@ function makeItem(id: string, name: string, sortKey: string): ShoppingItem {
     checked: { value: false, timestamp: 100, modifiedBy: USER_ID },
     deleted: { value: false, timestamp: 100, modifiedBy: USER_ID },
     sortKey: { value: sortKey, timestamp: 100, modifiedBy: USER_ID },
+    section: { value: 'SONSTIGES', timestamp: 100, modifiedBy: USER_ID },
   }
 }
 
