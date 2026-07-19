@@ -134,7 +134,12 @@ Each phase = one meaningful commit (per the commit convention).
    `docs/aws-deploy.md` → Observability), confirmed working in prod
    2026-07-19: both SSM parameters (`DASH0_AUTH_TOKEN`, `DASH0_ENDPOINT`)
    set, deploy green, telemetry flowing to Dash0.
-4. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
+4. **Section grouping** (next feature, planned 2026-07-19): auto-group items
+   by supermarket section via bundled German dictionary + per-list learned
+   corrections (ADR-0012). Phased plan for subagents:
+   `docs/plans/section-grouping.md`. Phase 0 folds in the BUG-8 fix below —
+   `between()` becomes load-bearing once drag-to-reorder ships.
+5. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
    `FractionalIndex` and TS `fractionalIndex.ts` use incompatible algorithms
    (no reorder UI wired yet; fix = unify algorithm + shared cross-language
    test vectors). Related, found 2026-07-18 while writing coverage tests:
