@@ -14,6 +14,7 @@ import com.shopmate.domain.model.User;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.domain.port.in.ShoppingListUseCase;
 import com.shopmate.domain.port.out.EventPublisher;
+import com.shopmate.domain.port.out.SectionCorrectionRepository;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
 import com.shopmate.domain.section.Section;
@@ -38,15 +39,18 @@ public class ShoppingListService implements ShoppingListUseCase {
     private final UserRepository userRepository;
     private final EventPublisher eventPublisher;
     private final SectionClassifier sectionClassifier;
+    private final SectionCorrectionRepository sectionCorrectionRepository;
 
     public ShoppingListService(ShoppingListRepository listRepository,
                                 UserRepository userRepository,
                                 EventPublisher eventPublisher,
-                                SectionClassifier sectionClassifier) {
+                                SectionClassifier sectionClassifier,
+                                SectionCorrectionRepository sectionCorrectionRepository) {
         this.listRepository = listRepository;
         this.userRepository = userRepository;
         this.eventPublisher = eventPublisher;
         this.sectionClassifier = sectionClassifier;
+        this.sectionCorrectionRepository = sectionCorrectionRepository;
     }
 
     @Override
@@ -98,7 +102,8 @@ public class ShoppingListService implements ShoppingListUseCase {
             : list.activeItems().getLast().sortKey().value();
         String sortKey = FractionalIndex.append(lastSortKey);
 
-        Section section = sectionClassifier.classify(name);
+        Section section = sectionCorrectionRepository.find(listId, SectionClassifier.normalize(name))
+            .orElseGet(() -> sectionClassifier.classify(name));
 
         LwwField<String> nameFld = new LwwField<>(name, ts, requestingUserId);
         LwwField<String> qtyFld = new LwwField<>(quantity != null ? quantity : "1", ts, requestingUserId);
@@ -155,6 +160,15 @@ public class ShoppingListService implements ShoppingListUseCase {
         ShoppingList updated = list.applyChange(change);
         ShoppingList saved = listRepository.save(updated);
         eventPublisher.publishItemChange(listId, change);
+
+        if (change.field() == ItemField.SECTION) {
+            // Explicit reassignment: remember it per-list, keyed by the item's current name.
+            // Auto-classification (addItem) never reaches this path, so it never writes a correction.
+            String normalizedName = SectionClassifier.normalize(saved.items().get(change.itemId()).name().value());
+            sectionCorrectionRepository.upsert(listId, normalizedName, Section.fromCode(change.serializedValue()),
+                change.timestamp(), change.modifiedBy());
+        }
+
         return saved;
     }
 

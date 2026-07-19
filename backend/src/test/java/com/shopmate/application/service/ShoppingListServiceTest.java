@@ -12,8 +12,10 @@ import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.domain.port.out.EventPublisher;
+import com.shopmate.domain.port.out.SectionCorrectionRepository;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
+import com.shopmate.domain.section.Section;
 import com.shopmate.domain.section.SectionClassifier;
 import com.shopmate.domain.section.SectionDictionary;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +38,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -48,6 +51,7 @@ class ShoppingListServiceTest {
     @Mock ShoppingListRepository listRepository;
     @Mock UserRepository userRepository;
     @Mock EventPublisher eventPublisher;
+    @Mock SectionCorrectionRepository sectionCorrectionRepository;
 
     ShoppingListService service;
 
@@ -59,7 +63,8 @@ class ShoppingListServiceTest {
     @BeforeEach
     void setUp() {
         SectionClassifier sectionClassifier = new SectionClassifier(new SectionDictionary());
-        service = new ShoppingListService(listRepository, userRepository, eventPublisher, sectionClassifier);
+        service = new ShoppingListService(listRepository, userRepository, eventPublisher, sectionClassifier,
+            sectionCorrectionRepository);
     }
 
     private ShoppingList listWithNItems(int n) {
@@ -395,5 +400,134 @@ class ShoppingListServiceTest {
         // Exactly one item, not duplicated
         assertThat(listAfterB.items()).hasSize(1);
         assertThat(listAfterB.items().get(itemId).sortKey().value()).isEqualTo("c0"); // higher ts wins
+    }
+
+    @Test
+    void addItemUsesLearnedCorrectionOverClassifier() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(sectionCorrectionRepository.find(LIST_ID, "hefe")).thenReturn(Optional.of(Section.BROT_BACKWAREN));
+
+        ShoppingList saved = service.addItem(LIST_ID, "Hefe", "1", OWNER_ID);
+
+        ShoppingItem item = saved.items().values().iterator().next();
+        assertThat(item.section().value()).isEqualTo("BROT_BACKWAREN");
+    }
+
+    @Test
+    void addItemFallsBackToClassifierWhenNoLearnedCorrection() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(sectionCorrectionRepository.find(eq(LIST_ID), any())).thenReturn(Optional.empty());
+
+        ShoppingList saved = service.addItem(LIST_ID, "Kirschtomaten", "1", OWNER_ID);
+
+        assertThat(saved.items().values().iterator().next().section().value()).isEqualTo("OBST_GEMUESE");
+    }
+
+    @Test
+    void addItemNeverWritesACorrection() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.addItem(LIST_ID, "Milch", "1", OWNER_ID);
+
+        verify(sectionCorrectionRepository, never()).upsert(any(), any(), any(), anyLong(), any());
+    }
+
+    @Test
+    void applyItemChangeUpsertsCorrectionKeyedByCurrentNameOnExplicitSectionChange() {
+        ShoppingList list = listWithNItems(1); // seeded item named "Item 0"
+        UUID itemId = list.items().keySet().iterator().next();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(list));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        var change = new ItemChange(itemId, LIST_ID, ItemField.SECTION, "BROT_BACKWAREN", 500L, OWNER_ID);
+        service.applyItemChange(LIST_ID, change, OWNER_ID);
+
+        verify(sectionCorrectionRepository).upsert(LIST_ID, "item 0", Section.BROT_BACKWAREN, 500L, OWNER_ID);
+    }
+
+    @Test
+    void applyItemChangeDoesNotUpsertCorrectionForNonSectionField() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.QUANTITY, "3", 100L, MEMBER_ID);
+
+        service.applyItemChange(LIST_ID, change, MEMBER_ID);
+
+        verify(sectionCorrectionRepository, never()).upsert(any(), any(), any(), anyLong(), any());
+    }
+
+    @Test
+    void explicitSectionCorrectionAppliesOnNextAddItemWithSameName() {
+        // First add: no learned correction yet, so the item lands wherever the dictionary/fallback puts it.
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList afterAdd = service.addItem(LIST_ID, "Hefe", "1", OWNER_ID);
+        ShoppingItem added = afterAdd.items().values().iterator().next();
+
+        // User explicitly corrects the section.
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(afterAdd));
+        var correction = new ItemChange(added.id(), LIST_ID, ItemField.SECTION, "BROT_BACKWAREN", 999L, OWNER_ID);
+        service.applyItemChange(LIST_ID, correction, OWNER_ID);
+
+        verify(sectionCorrectionRepository).upsert(LIST_ID, "hefe", Section.BROT_BACKWAREN, 999L, OWNER_ID);
+
+        // Simulate the persisted correction being found on lookup, and the item being deleted + re-added.
+        when(sectionCorrectionRepository.find(LIST_ID, "hefe")).thenReturn(Optional.of(Section.BROT_BACKWAREN));
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+
+        ShoppingList afterReadd = service.addItem(LIST_ID, "Hefe", "1", OWNER_ID);
+        ShoppingItem readded = afterReadd.items().values().iterator().next();
+
+        assertThat(readded.section().value()).isEqualTo("BROT_BACKWAREN");
+    }
+
+    @Test
+    void sectionCorrectionUpsertObeysLwwOrderingEndToEnd() {
+        // A hand-rolled LWW-correct fake standing in for the persistence adapter, proving the
+        // service composes correctly with correction storage that enforces the real ordering rule.
+        SectionCorrectionRepository fakeCorrections = new InMemorySectionCorrectionRepository();
+        ShoppingListService svc = new ShoppingListService(listRepository, userRepository, eventPublisher,
+            new SectionClassifier(new SectionDictionary()), fakeCorrections);
+
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList afterAdd = svc.addItem(LIST_ID, "Hefe", "1", OWNER_ID);
+        UUID itemId = afterAdd.items().values().iterator().next().id();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(afterAdd));
+
+        // Newer correction lands first, then a stale (older-timestamp) correction must not overwrite it.
+        svc.applyItemChange(LIST_ID,
+            new ItemChange(itemId, LIST_ID, ItemField.SECTION, "GETRAENKE", 500L, OWNER_ID), OWNER_ID);
+        svc.applyItemChange(LIST_ID,
+            new ItemChange(itemId, LIST_ID, ItemField.SECTION, "HAUSHALT", 100L, OWNER_ID), OWNER_ID);
+
+        assertThat(fakeCorrections.find(LIST_ID, "hefe")).contains(Section.GETRAENKE);
+    }
+
+    /** Minimal in-memory LWW double for {@link SectionCorrectionRepository}, used only to prove
+     *  the service composes correctly with LWW-ordered correction storage (mirrors the real
+     *  persistence adapter's overwrite rule; the adapter itself is covered by
+     *  SectionCorrectionRepositoryAdapterIT against real Postgres). */
+    private static class InMemorySectionCorrectionRepository implements SectionCorrectionRepository {
+        private final Map<String, Section> sections = new HashMap<>();
+        private final Map<String, Long> timestamps = new HashMap<>();
+
+        @Override
+        public Optional<Section> find(UUID listId, String normalizedName) {
+            return Optional.ofNullable(sections.get(normalizedName));
+        }
+
+        @Override
+        public void upsert(UUID listId, String normalizedName, Section section, long timestamp, UUID modifiedBy) {
+            if (timestamp > timestamps.getOrDefault(normalizedName, Long.MIN_VALUE)) {
+                sections.put(normalizedName, section);
+                timestamps.put(normalizedName, timestamp);
+            }
+        }
     }
 }
