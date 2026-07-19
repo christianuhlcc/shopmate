@@ -34,15 +34,15 @@ export function AuthCallback() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-muted px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center">
-          <h2 className="text-lg font-semibold text-red-600 mb-4">Sign-in failed</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-ground px-4">
+        <div className="bg-panel rounded-2xl border border-line p-8 w-full max-w-sm text-center">
+          <h2 className="text-title font-semibold text-ink mb-2">Sign-in didn't work</h2>
+          <p className="text-body text-ink-soft mb-6">{error}</p>
           <a
             href="/login"
-            className="inline-block px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors"
+            className="pressable inline-flex items-center justify-center min-h-touch px-6 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep"
           >
-            Back to Login
+            Back to sign-in
           </a>
         </div>
       </div>
@@ -50,10 +50,14 @@ export function AuthCallback() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-muted">
+    <div className="min-h-screen flex items-center justify-center bg-ground">
       <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        <p className="text-gray-500">Signing you in…</p>
+        <div
+          className="h-10 w-10 animate-spin rounded-full border-4 border-marigold border-t-transparent"
+          role="status"
+          aria-label="Signing you in"
+        />
+        <p className="text-body text-ink-soft">Signing you in…</p>
       </div>
     </div>
   )

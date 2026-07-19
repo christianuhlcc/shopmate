@@ -33,6 +33,15 @@ export function ListsPage() {
       .finally(() => setIsLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!showCreate) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowCreate(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showCreate])
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!newListName.trim()) return
@@ -50,34 +59,54 @@ export function ListsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-muted">
-      <header className="bg-white border-b border-surface-border px-4 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">ShopMate</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm"
-        >
-          New list
-        </button>
+    <div className="min-h-screen bg-ground">
+      <header className="bg-marigold sticky top-0 z-header">
+        <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
+          <h1 className="text-title font-bold text-ink tracking-tight">ShopMate</h1>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="pressable min-h-touch px-5 py-2 bg-ink text-panel rounded-full text-body font-semibold hover:bg-ink/90 focus-visible:outline-ink"
+          >
+            New list
+          </button>
+        </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6">
+      <main className="max-w-lg mx-auto px-5 py-6">
         {isLoading && (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div role="status" aria-label="Loading lists" className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="bg-panel rounded-2xl border border-line p-5 animate-pulse"
+              >
+                <div className="h-4 w-2/5 rounded bg-line" />
+                <div className="mt-3 h-3 w-1/4 rounded bg-line/70" />
+              </div>
+            ))}
           </div>
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+          <div className="bg-danger-tint border border-danger/25 rounded-2xl p-4 text-danger text-body">
             {error}
           </div>
         )}
 
         {!isLoading && !error && lists.length === 0 && (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-lg mb-2">No lists yet</p>
-            <p className="text-sm">Tap "New list" to get started</p>
+          <div className="text-center py-16 px-6">
+            <EmptyPadGlyph />
+            <p className="text-item font-semibold text-ink mt-5">No lists yet</p>
+            <p className="text-body text-ink-soft mt-1 max-w-[32ch] mx-auto">
+              Start one for the weekly groceries, then share it — everyone edits
+              together and changes show up instantly.
+            </p>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="pressable mt-6 min-h-touch px-6 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep"
+            >
+              Create your first list
+            </button>
           </div>
         )}
 
@@ -86,12 +115,33 @@ export function ListsPage() {
             <li key={list.id}>
               <button
                 onClick={() => navigate(`/lists/${list.id}`)}
-                className="w-full bg-white rounded-xl border border-surface-border p-4 text-left hover:border-primary transition-colors"
+                className="pressable w-full bg-panel rounded-2xl border border-line p-5 text-left hover:border-marigold-deep/50 hover:bg-marigold-faint/40 flex items-center gap-4"
               >
-                <div className="font-medium text-gray-900">{list.name}</div>
-                <div className="text-sm text-gray-400 mt-1">
-                  {list.members.length} member{list.members.length !== 1 ? 's' : ''}
-                </div>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-item font-semibold text-ink truncate">
+                    {list.name}
+                  </span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <MemberDots members={list.members} />
+                    <span className="text-label text-ink-soft">
+                      {list.members.length} member{list.members.length !== 1 ? 's' : ''}
+                    </span>
+                  </span>
+                </span>
+                <svg
+                  className="w-4 h-4 flex-shrink-0 text-ink-mute"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M6 3.5L10.5 8 6 12.5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </li>
           ))}
@@ -100,20 +150,27 @@ export function ListsPage() {
 
       {showCreate && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0"
+          className="sheet-backdrop fixed inset-0 bg-ink/40 flex items-end sm:items-center justify-center z-overlay px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCreate(false)
           }}
         >
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">New list</h2>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-list-title"
+            className="sheet-panel bg-panel rounded-2xl shadow-xl p-6 w-full max-w-sm z-sheet"
+          >
+            <h2 id="create-list-title" className="text-title font-semibold text-ink mb-4">
+              New list
+            </h2>
             <form onSubmit={handleCreate}>
               <input
                 type="text"
                 value={newListName}
                 onChange={(e) => setNewListName(e.target.value)}
                 placeholder="List name"
-                className="w-full border border-surface-border rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full border border-line rounded-xl px-4 py-3 text-body text-ink placeholder:text-ink-mute mb-4 focus:outline-none focus:ring-2 focus:ring-marigold-deep"
                 autoFocus
                 maxLength={100}
               />
@@ -121,14 +178,14 @@ export function ListsPage() {
                 <button
                   type="button"
                   onClick={() => { setShowCreate(false); setNewListName('') }}
-                  className="flex-1 px-4 py-2 border border-surface-border rounded-lg text-sm font-medium text-gray-600 hover:bg-surface-muted transition-colors"
+                  className="pressable flex-1 min-h-touch px-4 py-2.5 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating || !newListName.trim()}
-                  className="flex-1 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors disabled:opacity-50"
+                  className="pressable flex-1 min-h-touch px-4 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50 disabled:hover:bg-marigold"
                 >
                   {creating ? 'Creating…' : 'Create'}
                 </button>
@@ -138,5 +195,40 @@ export function ListsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function MemberDots({ members }: { members: ShoppingList['members'] }) {
+  const shown = members.slice(0, 3)
+  return (
+    <span aria-hidden="true" className="flex -space-x-1.5">
+      {shown.map((m) => (
+        <span
+          key={m.id}
+          className="h-5 w-5 rounded-full bg-marigold-tint border border-panel flex items-center justify-center text-[0.625rem] font-bold text-honey-deep uppercase"
+        >
+          {(m.displayName || m.email).charAt(0)}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function EmptyPadGlyph() {
+  return (
+    <svg
+      className="mx-auto w-16 h-16"
+      viewBox="0 0 64 64"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect x="12" y="8" width="40" height="48" rx="8" fill="oklch(0.93 0.07 85)" />
+      <path
+        d="M22 24h20M22 33h14M22 42h17"
+        stroke="oklch(0.68 0.145 68)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
   )
 }

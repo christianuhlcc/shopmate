@@ -65,10 +65,10 @@ beforeEach(() => {
 })
 
 describe('ShoppingListPage', () => {
-  it('shows a spinner while loading', () => {
+  it('shows a loading skeleton while loading', () => {
     mockedHook.mockReturnValue(hookState({ isLoading: true }))
-    const { container } = renderPage()
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    renderPage()
+    expect(screen.getByRole('status', { name: /loading list/i })).toBeInTheDocument()
   })
 
   it('shows the error state', () => {

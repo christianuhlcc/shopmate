@@ -62,6 +62,11 @@ cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew bootRun
 # Frontend only
 cd frontend && npm run dev
 
+# Visual preview without a backend (mock data, all screen states):
+#   npm run dev, then open http://localhost:3000/preview.html?screen=<state>
+#   states: login | lists | lists-empty | lists-loading | list | list-empty
+#           | list-loading | list-error | callback-error   (+ &sheet=create|share)
+
 # Backend tests
 cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew test
 
@@ -111,3 +116,8 @@ nothing. Details: `docs/aws-deploy.md`.
 - SSE auth uses a separate short-lived JWT scoped to `(userId, listId)`, 15-min TTL, passed as `?token=` query param (EventSource cannot set headers).
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET` come from environment variables only. Never commit secrets.
 - Copy `.env.example` to `.env` and fill in real values for local development.
+
+## Design Context
+
+- `PRODUCT.md` — strategic design context: register (product), platform (web), users, positioning, brand personality, anti-references, design principles. Read it before any UI/UX work.
+- `DESIGN.md` — visual system (currently a SEED: committed marigold palette, warm humanist sans, responsive motion). The previous white+indigo Tailwind-default look is retired; re-run `/impeccable document` after the redesign lands to capture real tokens.

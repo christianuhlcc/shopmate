@@ -86,7 +86,7 @@ describe('AuthCallback', () => {
     await waitFor(() => {
       expect(screen.getByText(/no authorization code/i)).toBeInTheDocument()
     })
-    expect(screen.getByRole('link', { name: /back to login/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to sign-in/i })).toBeInTheDocument()
   })
 
   it('shows error when exchange fails', async () => {

@@ -37,4 +37,27 @@ describe('ItemList', () => {
     expect(screen.getByText('Eggs')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
+
+  it('groups checked items under "In the cart"', () => {
+    const checkedItem = {
+      ...makeItem('2', 'Eggs', 'b0'),
+      checked: { value: true, timestamp: 200, modifiedBy: USER_ID },
+    }
+    const items = [makeItem('1', 'Milk', 'a0'), checkedItem]
+    render(<ItemList items={items} {...handlers()} />)
+    expect(screen.getByText(/in the cart/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('renders only the checked section when everything is checked', () => {
+    const items = [
+      {
+        ...makeItem('1', 'Milk', 'a0'),
+        checked: { value: true, timestamp: 200, modifiedBy: USER_ID },
+      },
+    ]
+    render(<ItemList items={items} {...handlers()} />)
+    expect(screen.getByText(/in the cart/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  })
 })

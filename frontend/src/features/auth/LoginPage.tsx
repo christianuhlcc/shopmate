@@ -1,19 +1,85 @@
 export function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-muted px-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">ShopMate</h1>
-          <p className="text-gray-500">Share shopping lists with anyone</p>
+    <div className="min-h-screen bg-marigold flex items-center justify-center px-6 py-12">
+      <div className="w-full max-w-sm">
+        <header className="text-center mb-8">
+          <h1 className="text-display font-bold text-ink tracking-tight">ShopMate</h1>
+          <p className="mt-2 text-item font-medium text-honey-deep">
+            One list for the whole household
+          </p>
+        </header>
+
+        {/* A glimpse of the product: the shared pad, mid-shop */}
+        <div
+          aria-hidden="true"
+          className="bg-panel rounded-2xl border border-marigold-deep/30 shadow-[0_12px_32px_-16px_oklch(0.40_0.08_68/0.45)] px-5 py-2 mb-8"
+        >
+          <PreviewRow name="Milk" checked />
+          <PreviewRow name="Eggs" checked />
+          <PreviewRow name="Basil" quantity="2 bunches" />
+          <PreviewRow name="Olive oil" last />
         </div>
+
         <a
           href="/oauth2/authorization/google"
-          className="flex items-center justify-center gap-3 w-full px-4 py-3 border border-surface-border rounded-xl font-medium text-gray-700 hover:bg-surface-muted transition-colors"
+          className="pressable flex items-center justify-center gap-3 w-full min-h-touch px-4 py-3 bg-ink text-panel rounded-full text-body font-semibold shadow-sm hover:bg-ink/90 focus-visible:outline-ink"
         >
           <GoogleIcon />
           Sign in with Google
         </a>
+
+        <p className="mt-4 text-center text-label text-honey-deep">
+          Everyone edits together — changes appear instantly.
+        </p>
       </div>
+    </div>
+  )
+}
+
+function PreviewRow({
+  name,
+  quantity,
+  checked = false,
+  last = false,
+}: {
+  name: string
+  quantity?: string
+  checked?: boolean
+  last?: boolean
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 py-2.5 ${last ? '' : 'border-b border-line'}`}
+    >
+      <span
+        className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+          checked ? 'bg-marigold border-marigold' : 'border-line'
+        }`}
+      >
+        {checked && (
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M2.5 6.5l2.5 2.5 4.5-5.5"
+              stroke="oklch(0.27 0.025 65)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </span>
+      <span
+        className={`text-body ${
+          checked ? 'text-ink-mute line-through decoration-ink-mute/60' : 'text-ink'
+        }`}
+      >
+        {name}
+      </span>
+      {quantity && (
+        <span className="ml-auto text-label font-semibold text-honey-deep bg-marigold-faint rounded-full px-2 py-0.5">
+          {quantity}
+        </span>
+      )}
     </div>
   )
 }

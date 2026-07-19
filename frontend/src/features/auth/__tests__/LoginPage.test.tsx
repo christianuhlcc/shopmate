@@ -15,7 +15,7 @@ describe('LoginPage', () => {
   it('renders without crashing', () => {
     renderLoginPage()
     expect(screen.getByText('ShopMate')).toBeInTheDocument()
-    expect(screen.getByText('Share shopping lists with anyone')).toBeInTheDocument()
+    expect(screen.getByText('One list for the whole household')).toBeInTheDocument()
   })
 
   it('Google sign-in button has correct href', () => {
