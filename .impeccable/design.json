@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-19T10:45:00+02:00",
+  "title": "Design System: ShopMate",
+  "extensions": {
+    "colorMeta": {
+      "marigold": { "role": "primary", "displayName": "Marigold", "canonical": "oklch(0.79 0.155 75)", "tonalRamp": ["oklch(0.15 0.06 75)", "oklch(0.28 0.09 72)", "oklch(0.40 0.11 70)", "oklch(0.52 0.13 69)", "oklch(0.63 0.145 68)", "oklch(0.72 0.15 71)", "oklch(0.79 0.155 75)", "oklch(0.92 0.07 82)"] },
+      "marigold-deep": { "role": "primary", "displayName": "Marigold Deep", "canonical": "oklch(0.68 0.145 68)", "tonalRamp": ["oklch(0.15 0.05 68)", "oklch(0.27 0.08 68)", "oklch(0.38 0.10 68)", "oklch(0.48 0.12 68)", "oklch(0.58 0.135 68)", "oklch(0.68 0.145 68)", "oklch(0.80 0.12 70)", "oklch(0.92 0.06 72)"] },
+      "marigold-tint": { "role": "primary", "displayName": "Marigold Tint", "canonical": "oklch(0.93 0.07 85)", "tonalRamp": ["oklch(0.30 0.05 85)", "oklch(0.45 0.06 85)", "oklch(0.58 0.07 85)", "oklch(0.70 0.07 85)", "oklch(0.80 0.07 85)", "oklch(0.87 0.07 85)", "oklch(0.93 0.07 85)", "oklch(0.97 0.03 85)"] },
+      "marigold-faint": { "role": "primary", "displayName": "Marigold Faint", "canonical": "oklch(0.96 0.04 87)", "tonalRamp": ["oklch(0.35 0.03 87)", "oklch(0.50 0.035 87)", "oklch(0.62 0.04 87)", "oklch(0.73 0.04 87)", "oklch(0.82 0.04 87)", "oklch(0.90 0.04 87)", "oklch(0.96 0.04 87)", "oklch(0.985 0.02 87)"] },
+      "honey-deep": { "role": "primary", "displayName": "Honey Deep", "canonical": "oklch(0.40 0.08 68)", "tonalRamp": ["oklch(0.15 0.04 68)", "oklch(0.24 0.055 68)", "oklch(0.32 0.07 68)", "oklch(0.40 0.08 68)", "oklch(0.52 0.09 68)", "oklch(0.65 0.10 68)", "oklch(0.80 0.09 70)", "oklch(0.93 0.05 72)"] },
+      "ground": { "role": "neutral", "displayName": "Ground", "canonical": "oklch(0.98 0.005 85)", "tonalRamp": ["oklch(0.15 0.005 85)", "oklch(0.30 0.005 85)", "oklch(0.45 0.005 85)", "oklch(0.60 0.005 85)", "oklch(0.72 0.005 85)", "oklch(0.85 0.005 85)", "oklch(0.93 0.005 85)", "oklch(0.98 0.005 85)"] },
+      "panel": { "role": "neutral", "displayName": "Panel", "canonical": "oklch(1 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.30 0 0)", "oklch(0.45 0 0)", "oklch(0.60 0 0)", "oklch(0.72 0 0)", "oklch(0.85 0 0)", "oklch(0.94 0 0)", "oklch(1 0 0)"] },
+      "line": { "role": "neutral", "displayName": "Line", "canonical": "oklch(0.90 0.015 80)", "tonalRamp": ["oklch(0.20 0.015 80)", "oklch(0.32 0.015 80)", "oklch(0.45 0.015 80)", "oklch(0.58 0.015 80)", "oklch(0.70 0.015 80)", "oklch(0.80 0.015 80)", "oklch(0.90 0.015 80)", "oklch(0.96 0.01 80)"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "oklch(0.27 0.025 65)", "tonalRamp": ["oklch(0.15 0.02 65)", "oklch(0.27 0.025 65)", "oklch(0.38 0.028 65)", "oklch(0.50 0.03 66)", "oklch(0.62 0.03 68)", "oklch(0.75 0.025 70)", "oklch(0.87 0.02 75)", "oklch(0.95 0.01 80)"] },
+      "ink-soft": { "role": "neutral", "displayName": "Ink Soft", "canonical": "oklch(0.47 0.03 65)", "tonalRamp": ["oklch(0.15 0.02 65)", "oklch(0.25 0.025 65)", "oklch(0.36 0.028 65)", "oklch(0.47 0.03 65)", "oklch(0.58 0.03 66)", "oklch(0.70 0.028 68)", "oklch(0.83 0.02 72)", "oklch(0.94 0.01 78)"] },
+      "ink-mute": { "role": "neutral", "displayName": "Ink Mute", "canonical": "oklch(0.55 0.035 70)", "tonalRamp": ["oklch(0.15 0.02 70)", "oklch(0.26 0.025 70)", "oklch(0.36 0.03 70)", "oklch(0.46 0.033 70)", "oklch(0.55 0.035 70)", "oklch(0.68 0.03 72)", "oklch(0.82 0.025 75)", "oklch(0.94 0.012 80)"] },
+      "danger": { "role": "tertiary", "displayName": "Danger", "canonical": "oklch(0.55 0.19 27)", "tonalRamp": ["oklch(0.15 0.08 27)", "oklch(0.25 0.11 27)", "oklch(0.35 0.14 27)", "oklch(0.45 0.17 27)", "oklch(0.55 0.19 27)", "oklch(0.68 0.15 27)", "oklch(0.82 0.09 27)", "oklch(0.94 0.03 27)"] },
+      "danger-tint": { "role": "tertiary", "displayName": "Danger Tint", "canonical": "oklch(0.96 0.025 27)", "tonalRamp": ["oklch(0.30 0.02 27)", "oklch(0.45 0.022 27)", "oklch(0.58 0.024 27)", "oklch(0.70 0.025 27)", "oklch(0.80 0.025 27)", "oklch(0.89 0.025 27)", "oklch(0.96 0.025 27)", "oklch(0.985 0.012 27)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The login wordmark only." },
+      "title": { "displayName": "Title", "purpose": "Screen headers and dialog titles." },
+      "item": { "displayName": "Item", "purpose": "List-item names and the add-item input — the glanceable workhorse." },
+      "body": { "displayName": "Body", "purpose": "Buttons (600 weight), prose, dialog copy." },
+      "label": { "displayName": "Label", "purpose": "Chips, member counts, section labels, dialog subtitles." }
+    },
+    "shadows": [
+      { "name": "sheet", "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "purpose": "Modal bottom sheets / dialogs — the only heavy shadow in the system." },
+      { "name": "honey-lift", "value": "0 12px 32px -16px oklch(0.40 0.08 68 / 0.45)", "purpose": "The login pad-preview card floating on drenched marigold." },
+      { "name": "dock-whisper", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "White input pill and FAB sitting on the marigold add dock." }
+    ],
+    "motion": [
+      { "name": "ease-out-quint", "value": "cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "The house easing for every transition and keyframe." },
+      { "name": "check-draw", "value": "220ms stroke-dashoffset 16→0", "purpose": "Checkmark draws itself on check-off." },
+      { "name": "strike-fade", "value": "250ms text-decoration-color + color", "purpose": "Line-through fades in on checked item labels." },
+      { "name": "sheet-up", "value": "220ms translateY(1rem)→0 + fade", "purpose": "Bottom sheets entering; backdrop fades in 150ms." },
+      { "name": "press", "value": "120ms scale(0.97)", "purpose": "Tactile compress on every button press." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action on light surfaces — marigold pill with ink text.",
+      "html": "<button class=\"ds-btn-primary\">Create</button>",
+      "css": ".ds-btn-primary { background: oklch(0.79 0.155 75); color: oklch(0.27 0.025 65); min-height: 2.75rem; padding: 10px 24px; border: none; border-radius: 9999px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; font-size: 0.9375rem; font-weight: 600; cursor: pointer; transition: transform 120ms cubic-bezier(0.22,1,0.36,1), background-color 150ms ease-out; } .ds-btn-primary:hover { background: oklch(0.68 0.145 68); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(0.68 0.145 68); outline-offset: 2px; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:disabled { opacity: 0.5; }"
+    },
+    {
+      "name": "On-Brand Button",
+      "kind": "button",
+      "refersTo": "button-on-brand",
+      "description": "The inverted twin used on marigold surfaces (header actions, login CTA).",
+      "html": "<button class=\"ds-btn-ink\">Share</button>",
+      "css": ".ds-btn-ink { background: oklch(0.27 0.025 65); color: oklch(1 0 0); min-height: 2.75rem; padding: 8px 20px; border: none; border-radius: 9999px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; font-size: 0.9375rem; font-weight: 600; cursor: pointer; transition: transform 120ms cubic-bezier(0.22,1,0.36,1), background-color 150ms ease-out; } .ds-btn-ink:hover { background: oklch(0.27 0.025 65 / 0.9); } .ds-btn-ink:focus-visible { outline: 2px solid oklch(0.27 0.025 65); outline-offset: 2px; } .ds-btn-ink:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The Cancel role — white pill with hairline border.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { background: oklch(1 0 0); color: oklch(0.47 0.03 65); min-height: 2.75rem; padding: 10px 16px; border: 1px solid oklch(0.90 0.015 80); border-radius: 9999px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; font-size: 0.9375rem; font-weight: 600; cursor: pointer; transition: transform 120ms cubic-bezier(0.22,1,0.36,1), background-color 150ms ease-out; } .ds-btn-ghost:hover { background: oklch(0.98 0.005 85); } .ds-btn-ghost:focus-visible { outline: 2px solid oklch(0.68 0.145 68); outline-offset: 2px; } .ds-btn-ghost:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Standard dialog input — white, hairline border, marigold-deep focus ring.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"List name\" />",
+      "css": ".ds-input { background: oklch(1 0 0); color: oklch(0.27 0.025 65); width: 100%; padding: 12px 16px; border: 1px solid oklch(0.90 0.015 80); border-radius: 0.75rem; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; font-size: 0.9375rem; } .ds-input::placeholder { color: oklch(0.55 0.035 70); } .ds-input:focus { outline: none; box-shadow: 0 0 0 2px oklch(0.68 0.145 68); }"
+    },
+    {
+      "name": "Quantity Chip",
+      "kind": "chip",
+      "refersTo": "chip-quantity",
+      "description": "Quantity metadata on an item row.",
+      "html": "<span class=\"ds-chip\">2 bunches</span>",
+      "css": ".ds-chip { display: inline-block; background: oklch(0.96 0.04 87); color: oklch(0.40 0.08 68); padding: 2px 10px; border-radius: 9999px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; font-size: 0.8125rem; font-weight: 600; }"
+    },
+    {
+      "name": "Item Row",
+      "kind": "custom",
+      "description": "One rule of the grocery pad: circular checkbox, item name, quantity chip, delete.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-row-check\" aria-label=\"Check item\"><span class=\"ds-row-circle\"></span></button><span class=\"ds-row-name\">Basil</span><span class=\"ds-chip-inline\">2 bunches</span><button class=\"ds-row-del\" aria-label=\"Delete item\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\"><path d=\"M4 4l8 8M12 4l-8 8\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg></button></div>",
+      "css": ".ds-row { display: flex; align-items: center; gap: 4px; min-height: 3.25rem; padding: 4px 4px 4px 8px; background: oklch(1 0 0); border-bottom: 1px solid oklch(0.90 0.015 80); font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; } .ds-row-check { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; } .ds-row-circle { width: 1.625rem; height: 1.625rem; border-radius: 9999px; border: 2px solid oklch(0.55 0.035 70 / 0.9); transition: border-color 150ms ease-out; } .ds-row-check:hover .ds-row-circle { border-color: oklch(0.68 0.145 68); } .ds-row-name { flex: 1; color: oklch(0.27 0.025 65); font-size: 1.0625rem; text-align: left; } .ds-chip-inline { background: oklch(0.96 0.04 87); color: oklch(0.40 0.08 68); padding: 2px 10px; border-radius: 9999px; font-size: 0.8125rem; font-weight: 600; } .ds-row-del { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; background: none; border: none; border-radius: 9999px; color: oklch(0.55 0.035 70); cursor: pointer; transition: color 150ms ease-out, background-color 150ms ease-out; } .ds-row-del:hover { color: oklch(0.55 0.19 27); background: oklch(0.96 0.025 27); }"
+    },
+    {
+      "name": "Header Band",
+      "kind": "nav",
+      "description": "Sticky marigold header with back chevron, title, and one on-brand action.",
+      "html": "<header class=\"ds-header\"><button class=\"ds-header-back\" aria-label=\"Back to lists\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\"><path d=\"M12.5 4.5L7 10l5.5 5.5\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button><h1 class=\"ds-header-title\">Groceries</h1><button class=\"ds-header-action\">Share</button></header>",
+      "css": ".ds-header { display: flex; align-items: center; gap: 4px; background: oklch(0.79 0.155 75); padding: 10px 8px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; } .ds-header-back { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; background: none; border: none; border-radius: 9999px; color: oklch(0.27 0.025 65); cursor: pointer; transition: background-color 150ms ease-out; } .ds-header-back:hover { background: oklch(0.68 0.145 68 / 0.25); } .ds-header-title { flex: 1; margin: 0; color: oklch(0.27 0.025 65); font-size: 1.1875rem; font-weight: 700; } .ds-header-action { background: oklch(0.27 0.025 65); color: oklch(1 0 0); min-height: 2.75rem; padding: 8px 20px; margin-right: 8px; border: none; border-radius: 9999px; font-size: 0.9375rem; font-weight: 600; cursor: pointer; } .ds-header-action:hover { background: oklch(0.27 0.025 65 / 0.9); }"
+    },
+    {
+      "name": "Add Dock",
+      "kind": "custom",
+      "description": "The fixed marigold bottom bar: white input pill + ink FAB with marigold plus.",
+      "html": "<div class=\"ds-dock\"><input class=\"ds-dock-input\" type=\"text\" placeholder=\"Add an item…\" /><button class=\"ds-dock-fab\" aria-label=\"Add item\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\"><path d=\"M10 4v12M4 10h12\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\"/></svg></button></div>",
+      "css": ".ds-dock { display: flex; gap: 8px; background: oklch(0.79 0.155 75); padding: 14px 20px; font-family: 'Nunito Sans Variable', 'Nunito Sans', system-ui, sans-serif; } .ds-dock-input { flex: 1; min-height: 2.75rem; background: oklch(1 0 0); color: oklch(0.27 0.025 65); border: none; border-radius: 9999px; padding: 10px 20px; font-size: 1.0625rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-dock-input::placeholder { color: oklch(0.55 0.035 70); } .ds-dock-input:focus { outline: none; box-shadow: 0 0 0 2px oklch(0.27 0.025 65); } .ds-dock-fab { min-width: 2.75rem; min-height: 2.75rem; display: flex; align-items: center; justify-content: center; background: oklch(0.27 0.025 65); color: oklch(0.79 0.155 75); border: none; border-radius: 9999px; cursor: pointer; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); transition: transform 120ms cubic-bezier(0.22,1,0.36,1), background-color 150ms ease-out; } .ds-dock-fab:hover { background: oklch(0.27 0.025 65 / 0.9); } .ds-dock-fab:active { transform: scale(0.97); } .ds-dock-fab:disabled { background: oklch(0.27 0.025 65 / 0.2); color: oklch(1 0 0); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Sunlit Fridge Door",
+    "overview": "ShopMate's visual system is the family grocery pad reborn as software: the marigold warmth of a morning kitchen, the immediacy of a pencil on paper, and the quiet dependability of a system app. The interface is friendly, warm, and familial — a household object that happens to be world-class engineering underneath. Color is committed, not decorative: one saturated marigold carries the login screen, every header band, the add-item dock, and the check affordances, giving the app an unmistakable identity at a glance, even one-handed under supermarket fluorescents. The system explicitly rejects dev-tool darkness and todo-app minimalism; the previous default-Tailwind white+indigo system is retired wholesale.",
+    "keyCharacteristics": [
+      "Committed color: marigold owns headers, the add dock, checks, and the entire login screen",
+      "Light, bright, warm — designed for daylight and store lighting; no dark mode",
+      "One warm humanist sans (Nunito Sans) across the whole UI, fixed ~1.125-ratio scale",
+      "The list is a \"pad\": one continuous white panel with hairline ruled dividers",
+      "Pill-shaped controls, circular checkboxes, ≥44px touch targets everywhere",
+      "Responsive motion: tactile feedback and calm transitions, zero page choreography"
+    ],
+    "rules": [
+      { "name": "The Committed Rule", "body": "Marigold is not an accent — it owns real surface area on every screen (header + dock + checks; the login screen is fully drenched). If a grayscale screenshot looks like a generic white app, the color commitment has failed.", "section": "colors" },
+      { "name": "The Actually-Marigold Rule", "body": "Warmth is expressed through the saturated brand color, never by tinting neutrals toward cream/beige/sand. Ground stays at chroma ≤0.005; a warm-tinted near-white body background is the failure mode, not the goal.", "section": "colors" },
+      { "name": "The Daylight Rule", "body": "Every screen must hold up in a bright supermarket: WCAG AA text contrast everywhere, 3:1 minimum on control outlines (checkbox rings are ink-mute, not line), no low-contrast \"elegance.\"", "section": "colors" },
+      { "name": "The Dark-Honey Rule", "body": "Text on marigold is ink or honey-deep — a darker shade of the same hue. Gray or white text on marigold is forbidden.", "section": "colors" },
+      { "name": "The One Voice Rule", "body": "One type family everywhere — headings, items, buttons, labels. No display font, ever.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. If a resting card has a shadow, it's wrong; if a floating sheet lacks one, it's wrong.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do let marigold carry real surface area (The Committed Rule) — header bands, the add dock, check states, and the fully drenched login.",
+      "Do make check-off feel like the pencil stroke on a paper grocery pad: drawn checkmark, fading strike, instant optimistic state.",
+      "Do keep the calm of Apple Reminders: nothing to learn, nothing to distrust, remote edits appearing in place without ceremony.",
+      "Do honor prefers-reduced-motion with instant alternatives for every animation, including the checkmark draw and sheet slide.",
+      "Do size every touch target ≥44px (min-h-touch/min-w-touch) for one-handed, in-motion use.",
+      "Do keep control outlines at ≥3:1 (checkbox rings are ink-mute, never line)."
+    ],
+    "donts": [
+      "Don't ship \"dev-tool darkness\" — no dark-terminal aesthetic, no dense engineer-chic panels (PRODUCT.md anti-reference).",
+      "Don't ship \"todo-app minimalism\" — no generic gray task-list look; the pad, chips, and cart section are the shopping-list identity (PRODUCT.md anti-reference).",
+      "Don't tint backgrounds toward cream/beige to fake warmth (The Actually-Marigold Rule) — ground stays at chroma ≤0.005.",
+      "Don't put gray or white text on marigold (The Dark-Honey Rule) — use ink or honey-deep.",
+      "Don't reintroduce the retired indigo (#4F46E5) or default-Tailwind grays.",
+      "Don't render items as individual cards — the pad is one panel with ruled dividers; nested cards are always wrong.",
+      "Don't use mascots, vegetable illustrations, or sticker-book decoration — warmth comes from color and interaction, not kitsch.",
+      "Don't drop below WCAG AA text contrast anywhere (The Daylight Rule).",
+      "Don't define a Tailwind color token without the / <alpha-value> suffix — opacity modifiers silently break without it."
+    ]
+  }
+}
