@@ -3,14 +3,34 @@ package com.shopmate.domain.crdt;
 /**
  * Fractional index arithmetic for CRDT sort keys.
  * Generates lexicographically orderable strings for item ordering.
- * Algorithm mirrors frontend fractionalIndex.ts — both must produce identical output.
+ * Algorithm mirrors frontend fractionalIndex.ts (both must produce identical
+ * output for the same inputs — pinned by shared/fractional-index-vectors.json,
+ * loaded by both this test suite and the Vitest suite).
  *
- * Based on the approach used in Figma/Linear fractional indexing:
- * keys are base-26 strings (a-z) with a digit suffix for disambiguation.
+ * Keys are lexicographically orderable strings over a base-36 alphabet
+ * ('0'-'9' then 'a'-'z', digits sorting below letters). Ordering is always
+ * plain string comparison ({@code String.compareTo}) — never numeric parsing.
+ *
+ * <p>BUG-8 background (see PLAN.md / docs/plans/section-grouping.md Phase 0):
+ * the previous algorithm padded the shorter key with the alphabet's lowest
+ * character ('a') to equal length before diffing. That collides whenever the
+ * longer key equals the padded-short key exactly (e.g. {@code between("b0","b0a")}
+ * pads "b0" to "b0a", which then equals {@code after} exactly) — the code fell
+ * back to "keys are equal, invent a new suffix", producing a key that sorts
+ * <em>after</em> {@code after}, violating the strictly-between contract. The
+ * fix below never pads: a position past the end of a string is treated as a
+ * real "no digit" sentinel (strictly below every real digit, including the
+ * alphabet's own minimum), not as a stand-in for the minimum digit itself.
  */
 public final class FractionalIndex {
 
+    private static final String ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
+    private static final int BASE = ALPHABET.length(); // 36
+    private static final int MAX_ITERATIONS = 10_000;
+
+    /** Default starting key for a brand-new, empty list. Not a hard algorithmic bound. */
     public static final String MIN = "a0";
+    /** Illustrative upper reference; the algorithm has no fixed ceiling. */
     public static final String MAX = "z0";
 
     private FractionalIndex() {}
@@ -20,64 +40,134 @@ public final class FractionalIndex {
      * Pass null for before/after to mean "beginning" or "end" of the list.
      */
     public static String between(String before, String after) {
-        String lo = before == null ? MIN : before;
-        String hi = after == null ? MAX : after;
-
-        if (lo.compareTo(hi) >= 0) {
+        if (before != null && after != null && before.compareTo(after) >= 0) {
             throw new IllegalArgumentException(
-                "before (" + lo + ") must be less than after (" + hi + ")");
+                "before (" + before + ") must be less than after (" + after + ")");
         }
-
-        return midpoint(lo, hi);
+        return midpointCore(before == null ? "" : before, after);
     }
 
-    /** Generate a sort key for a new item appended at the end. */
+    /**
+     * Generate a sort key for a new item appended at the end. Only the first
+     * character is ever inspected: incrementing it (base-36) always produces
+     * a key greater than any key already using that or a lower first
+     * character — exactly the invariant the caller relies on ({@code lastKey}
+     * is the maximum active sort key). Falls back to extending the key when
+     * the first character is already at the top of the alphabet; any
+     * nonempty suffix makes the result greater than {@code lastKey} (a longer
+     * string with {@code lastKey} as a strict prefix always sorts after it).
+     */
     public static String append(String lastKey) {
         if (lastKey == null) return "a0";
-        // Increment the last character
-        char last = lastKey.charAt(0);
-        if (last < 'z') {
-            return String.valueOf((char) (last + 1)) + "0";
+        int first = digitOf(lastKey.charAt(0));
+        if (first < BASE - 1) {
+            return charOf(first + 1) + "0";
         }
-        // Overflow: append a suffix
-        return lastKey + "m0";
+        return lastKey + "i0";
     }
 
-    private static String midpoint(String lo, String hi) {
-        // Pad shorter string with 'a' (lowest character) to equal length
-        int maxLen = Math.max(lo.length(), hi.length());
-        String a = padRight(lo, maxLen, 'a');
-        String b = padRight(hi, maxLen, 'a');
+    /**
+     * Returns the lexicographically-smallest key strictly greater than
+     * {@code lo} and strictly less than {@code bound} (or unbounded above, if
+     * {@code bound} is null).
+     *
+     * <p>{@code lo} is always a concrete (possibly empty) string; an empty
+     * string means "no lower bound" — every position reads as the "ended"
+     * sentinel, which is exactly what we want (it's always less than any real
+     * key).
+     *
+     * <p>Walks the two keys position by position. A "no digit" sentinel (-1
+     * for {@code lo}, or the sentinel {@code BASE} for an unbounded
+     * {@code bound}) never collides with a real digit, which is what makes
+     * tight pairs like ("b0", "b0a") solvable: lo runs out at index 2
+     * (sentinel -1), bound's digit there is 'a' (10), so there's room below
+     * it (any digit 0-9) that both extends past lo (making the result &gt; lo,
+     * since lo is now a strict, shorter prefix) and sits below bound's digit
+     * at that position (making the result &lt; bound).
+     *
+     * <p>Once a differing digit has been chosen at some position while both
+     * sides were still real (the "gap of exactly 1" case), {@code bound} is
+     * set to null for all later positions: that digit already resolved the
+     * comparison against the original bound, so nothing further can push the
+     * result back above it.
+     */
+    private static String midpointCore(String lo, String hiOrNull) {
+        StringBuilder result = new StringBuilder();
+        String bound = hiOrNull;
 
-        StringBuilder mid = new StringBuilder();
-        for (int i = 0; i < maxLen; i++) {
-            char ca = a.charAt(i);
-            char cb = b.charAt(i);
-            int diff = cb - ca;
-            if (diff > 1) {
-                // Found a gap — take the midpoint character
-                mid.append((char) (ca + diff / 2));
-                return mid.toString();
-            } else if (diff == 1) {
-                // Gap of 1 — take the lower character and recurse into suffix
-                mid.append(ca);
-                // Append midpoint suffix between end-of-lo and end-of-hi
-                String loSuffix = lo.length() > i + 1 ? lo.substring(i + 1) : "a";
-                String hiSuffix = "z";
-                return mid + midpoint(loSuffix, hiSuffix + "z");
+        for (int i = 0; i < MAX_ITERATIONS; i++) {
+            int a = i < lo.length() ? digitOf(lo.charAt(i)) : -1;
+            int b = bound == null ? BASE : (i < bound.length() ? digitOf(bound.charAt(i)) : -1);
+
+            if (a == b) {
+                if (a == -1) {
+                    // Both sides ended at the same position with an identical
+                    // prefix so far: either lo equals hi (should already be
+                    // rejected by the caller), or hi equals lo + (only the
+                    // alphabet's minimum digit repeated). The latter is a
+                    // genuine mathematical dead end — no string can be
+                    // strictly between a key and "that same key plus only its
+                    // lowest possible digit" under plain lexicographic string
+                    // comparison.
+                    throw new IllegalArgumentException(
+                        "no key exists strictly between \"" + lo + "\" and \"" + hiOrNull
+                            + "\" - keys are too tight");
+                }
+                result.append(charOf(a));
+                continue;
+            }
+
+            // a < b is guaranteed here: lo < bound and every prior position matched.
+            if (b - a >= 2) {
+                int digit = a + (b - a) / 2;
+                if (digit == 0) {
+                    // digit 0 is the alphabet's global minimum. Returning
+                    // here would make the result exactly "lo + digit0" - the
+                    // one pairing with zero room for a *future* between()
+                    // call against it (see the a==b/-1 branch above). We've
+                    // already secured result < bound (0 < b at this
+                    // position), so bound no longer constrains anything
+                    // further - append the 0 as a non-final digit and keep
+                    // going one more position with bound unlocked, which
+                    // always resolves safely.
+                    result.append(charOf(0));
+                    bound = null;
+                    continue;
+                }
+                result.append(charOf(digit));
+                return result.toString();
+            }
+
+            // b - a == 1: no room for a distinct digit at this position.
+            if (a == -1) {
+                // lo ended, bound's digit here is exactly 0 (the alphabet
+                // minimum) - tie on it. lo stays "ended" (sentinel -1) at
+                // every later position automatically; bound keeps
+                // constraining us since we haven't yet produced anything
+                // strictly below it.
+                result.append(charOf(0));
             } else {
-                // diff == 0: characters are equal, keep going
-                mid.append(ca);
+                // Both real, adjacent digits - tie on the lower one. That
+                // digit alone already guarantees result < original bound, so
+                // bound no longer constrains anything after this position.
+                result.append(charOf(a));
+                bound = null;
             }
         }
-        // Strings are equal after padding — append a midpoint suffix
-        return mid + midpoint("a", "z");
+
+        throw new IllegalStateException(
+            "fractional index exceeded " + MAX_ITERATIONS + " iterations");
     }
 
-    private static String padRight(String s, int length, char pad) {
-        if (s.length() >= length) return s;
-        StringBuilder sb = new StringBuilder(s);
-        while (sb.length() < length) sb.append(pad);
-        return sb.toString();
+    private static int digitOf(char c) {
+        int v = ALPHABET.indexOf(c);
+        if (v < 0) {
+            throw new IllegalArgumentException("invalid fractional index character: '" + c + "'");
+        }
+        return v;
+    }
+
+    private static char charOf(int v) {
+        return ALPHABET.charAt(v);
     }
 }
