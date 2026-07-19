@@ -51,13 +51,18 @@ const ITEMS =
   screen === 'list-empty'
     ? []
     : [
-        makeItem('i1', 'Milk', 'a0', { qty: '2 l' }),
-        makeItem('i2', 'Eggs', 'b0'),
-        makeItem('i3', 'Sourdough bread', 'c0'),
-        makeItem('i4', 'Basil', 'd0', { qty: '2 bunches' }),
-        makeItem('i5', 'Apples', 'e0', { qty: '6' }),
-        makeItem('i6', 'Olive oil', 'f0', { checked: true }),
-        makeItem('i7', 'Butter', 'g0', { checked: true }),
+        makeItem('i1', 'Äpfel', 'a0', { qty: '6', section: 'OBST_GEMUESE' }),
+        makeItem('i2', 'Kirschtomaten', 'b0', { section: 'OBST_GEMUESE' }),
+        makeItem('i3', 'Basilikum', 'c0', { qty: '2 Töpfe', section: 'OBST_GEMUESE' }),
+        makeItem('i4', 'Vollkornbrot', 'd0', { section: 'BROT_BACKWAREN' }),
+        makeItem('i5', 'Brötchen', 'e0', { qty: '6', section: 'BROT_BACKWAREN' }),
+        makeItem('i6', 'Milch', 'f0', { qty: '2 l', section: 'MOLKEREI_EIER' }),
+        makeItem('i7', 'Eier', 'g0', { qty: '10', section: 'MOLKEREI_EIER' }),
+        makeItem('i8', 'Hähnchenbrust', 'h0', { section: 'FLEISCH_FISCH' }),
+        makeItem('i9', 'Tiefkühlerbsen', 'i0', { section: 'TIEFKUEHL' }),
+        makeItem('i10', 'Spaghetti', 'j0', { section: 'VORRAT' }),
+        makeItem('i11', 'Olivenöl', 'k0', { section: 'GEWUERZE_SOSSEN', checked: true }),
+        makeItem('i12', 'Butter', 'l0', { section: 'MOLKEREI_EIER', checked: true }),
       ]
 
 const LISTS =

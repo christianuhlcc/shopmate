@@ -16,7 +16,8 @@ export function ShoppingListPage() {
     updateItem,
     checkItem,
     deleteItem,
-    moveItem,
+    setSection,
+    moveItemTo,
   } = useShoppingList(listId!)
 
   const [shareEmail, setShareEmail] = useState('')
@@ -137,7 +138,8 @@ export function ShoppingListPage() {
           checkItem={checkItem}
           updateItem={updateItem}
           deleteItem={deleteItem}
-          moveItem={moveItem}
+          setSection={setSection}
+          moveItemTo={moveItemTo}
         />
       </main>
 

@@ -9,7 +9,7 @@ import {
   type ItemField,
   type ShoppingItem,
 } from '../utils/lwwMerge'
-import { between } from '../utils/fractionalIndex'
+import { computeMove, groupBySection } from '../utils/sections'
 
 // SSE reconnect backoff bounds (exported for tests)
 export const SSE_RECONNECT_INITIAL_DELAY_MS = 1_000
@@ -213,33 +213,75 @@ export function useShoppingList(listId: string) {
     [listId],
   )
 
-  const moveItem = useCallback(
-    async (itemId: string, afterItemId: string | null) => {
+  const setSection = useCallback(
+    async (itemId: string, code: string) => {
       if (!user) return
-      const sorted = sortItems(items)
-      const afterIndex = afterItemId ? sorted.findIndex((i) => i.id === afterItemId) : -1
-
-      const prevItem = afterIndex >= 0 ? sorted[afterIndex] : null
-      const nextItem = afterIndex >= 0 && afterIndex + 1 < sorted.length ? sorted[afterIndex + 1] : null
-
-      const newKey = between(
-        prevItem?.sortKey.value ?? null,
-        nextItem?.sortKey.value ?? null,
-      )
-
-      // Optimistic update: value only, no client-fabricated timestamp.
+      // Optimistic update: change only the value. Timestamps are always
+      // server-assigned — never fabricate one from the client clock.
       setItems((prev) =>
         prev.map((i) =>
-          i.id === itemId ? { ...i, sortKey: { ...i.sortKey, value: newKey } } : i,
+          i.id === itemId ? { ...i, section: { ...i.section, value: code } } : i,
         ),
       )
-
       const { data, error: apiError } = await apiClient.PATCH('/lists/{listId}/items/{itemId}', {
         params: { path: { listId, itemId } },
-        body: { field: 'SORT_KEY', value: newKey, modifiedBy: user.id },
+        body: { field: 'SECTION', value: code, modifiedBy: user.id },
       })
       if (!apiError && data) {
         reconcileServerItem(data)
+      }
+    },
+    [listId, user, reconcileServerItem],
+  )
+
+  /**
+   * Move an item to a position within (or across) a section. All the math —
+   * the new fractional sort key, and whether the section changed — lives in
+   * computeMove()/groupBySection() (utils/sections.ts), fully unit-tested.
+   * This is one optimistic update followed by one PATCH (SORT_KEY), plus a
+   * second PATCH (SECTION) only when the drag crosses into a new section —
+   * still never delete+reinsert (ADR-0002 move invariant).
+   */
+  const moveItemTo = useCallback(
+    async (itemId: string, targetSection: string, targetIndex: number) => {
+      if (!user) return
+      const buckets = groupBySection(sortItems(items))
+      const { newSortKey, sectionChanged } = computeMove(buckets, itemId, targetSection, targetIndex)
+
+      // Optimistic update: value(s) only, no client-fabricated timestamps.
+      setItems((prev) =>
+        prev.map((i) => {
+          if (i.id !== itemId) return i
+          return {
+            ...i,
+            sortKey: { ...i.sortKey, value: newSortKey },
+            ...(sectionChanged ? { section: { ...i.section, value: targetSection } } : {}),
+          }
+        }),
+      )
+
+      const { data: sortData, error: sortError } = await apiClient.PATCH(
+        '/lists/{listId}/items/{itemId}',
+        {
+          params: { path: { listId, itemId } },
+          body: { field: 'SORT_KEY', value: newSortKey, modifiedBy: user.id },
+        },
+      )
+      if (!sortError && sortData) {
+        reconcileServerItem(sortData)
+      }
+
+      if (sectionChanged) {
+        const { data: sectionData, error: sectionError } = await apiClient.PATCH(
+          '/lists/{listId}/items/{itemId}',
+          {
+            params: { path: { listId, itemId } },
+            body: { field: 'SECTION', value: targetSection, modifiedBy: user.id },
+          },
+        )
+        if (!sectionError && sectionData) {
+          reconcileServerItem(sectionData)
+        }
       }
     },
     [listId, user, items, reconcileServerItem],
@@ -254,6 +296,7 @@ export function useShoppingList(listId: string) {
     updateItem,
     checkItem,
     deleteItem,
-    moveItem,
+    setSection,
+    moveItemTo,
   }
 }
