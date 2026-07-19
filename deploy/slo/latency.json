@@ -1,0 +1,44 @@
+{
+  "apiVersion": "openslo/v1",
+  "kind": "SLO",
+  "metadata": {
+    "name": "shopmate-backend-latency",
+    "labels": {
+      "service": "shopmate-backend",
+      "namespace": "shopmate",
+      "team": "shopmate"
+    }
+  },
+  "spec": {
+    "budgetingMethod": "Occurrences",
+    "description": "99% of shopmate-backend API requests (excluding the long-lived SSE stream and health checks) complete within 500ms over a rolling 28-day window.",
+    "indicator": {
+      "spec": {
+        "ratioMetric": {
+          "counter": true,
+          "good": {
+            "metricSource": {
+              "type": "Prometheus",
+              "spec": {
+                "query": "{otel_metric_name=\"dash0.spans.duration\", service_name=\"shopmate-backend\", otel_span_kind=\"SERVER\", http_route=~\"/api/.*\", http_route!=\"/api/lists/{listId}/events\", le=\"0.5\"}"
+              }
+            }
+          },
+          "total": {
+            "metricSource": {
+              "type": "Prometheus",
+              "spec": {
+                "query": "{otel_metric_name=\"dash0.spans.duration\", service_name=\"shopmate-backend\", otel_span_kind=\"SERVER\", http_route=~\"/api/.*\", http_route!=\"/api/lists/{listId}/events\", le=\"+Inf\"}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "timeWindow": [{ "duration": "28d", "isRolling": true }],
+    "objectives": [{
+      "displayName": "shopmate-backend: 99% of API requests under 500ms",
+      "target": 0.99
+    }]
+  }
+}
