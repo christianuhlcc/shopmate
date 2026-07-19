@@ -1,0 +1,8 @@
+# Small, hand-controlled fixture used to unit-test the classification pipeline
+# stages in isolation from the real (and growing) bundled dictionary.
+milch	MOLKEREI_EIER
+tomate	OBST_GEMUESE
+brot	BROT_BACKWAREN
+wurst	FLEISCH_FISCH
+erwurst	HAUSHALT
+rot	SUESSES_SNACKS
