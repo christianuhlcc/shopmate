@@ -1,0 +1,56 @@
+{
+  "description": "Shared fractional-index test vectors, asserted identically by the Java suite (backend/src/test/java/com/shopmate/domain/crdt/FractionalIndexTest.java) and the TypeScript suite (frontend/src/features/shopping-list/__tests__/fractionalIndex.test.ts). Pins the BUG-8 fix (docs/plans/section-grouping.md Phase 0 / PLAN.md) so the two language implementations can never silently diverge again.",
+  "append": [
+    { "last": null, "expect": "a0" },
+    { "last": "a0", "expect": "b0" },
+    { "last": "b0", "expect": "c0" },
+    { "last": "c0", "expect": "d0" },
+    { "last": "d0", "expect": "e0" },
+    { "last": "e0", "expect": "f0" },
+    { "last": "f0", "expect": "g0" },
+    { "last": "g0", "expect": "h0" },
+    { "last": "z0", "expect": "z0i0", "note": "overflow: first char already at alphabet max, extend length instead" },
+    { "last": "z0i0", "expect": "z0i0i0", "note": "overflow chains: still only the first char is ever inspected" }
+  ],
+  "between": [
+    {
+      "before": "b0",
+      "after": "b0a",
+      "expect": "b04",
+      "note": "BUG-8 regression case. The old algorithm padded 'b0' with its pad char 'a' to match length, producing 'b0a' == after exactly, then treated the pair as equal and appended a fresh suffix ('b0am'), which sorts AFTER 'b0a' -- violating the contract. Prod already has adjacent legacy keys in this exact shape."
+    },
+    { "before": "a0", "after": "z0", "expect": "m" },
+    { "before": "a0", "after": "b0", "expect": "ai" },
+    { "before": null, "after": "m0", "expect": "a" },
+    { "before": "m0", "after": null, "expect": "t" },
+    { "before": null, "after": null, "expect": "h" },
+    { "before": "a0", "after": "ai", "expect": "a9" }
+  ],
+  "tooTight": [
+    {
+      "before": "b0",
+      "after": "b00",
+      "note": "hi == lo + a single copy of the alphabet's minimum digit. Provably no string can sit strictly between two keys in that exact relationship under plain lexicographic comparison over any fixed alphabet -- both implementations must throw rather than silently return an out-of-range key."
+    }
+  ],
+  "bisectionNarrowingHi": {
+    "description": "Repeated between(lo, hi) with lo held fixed and hi replaced by each successive result -- the worst case for convergence toward one boundary. Each entry must satisfy lo < key < previousHi, and recomputing between(lo, previousHi) must reproduce it exactly.",
+    "lo": "a0",
+    "initialHi": "z0",
+    "keys": [
+      "m", "g", "d", "b", "ai", "a9", "a4", "a2", "a1", "a0h",
+      "a08", "a03", "a01", "a00h", "a008", "a003", "a001", "a000h", "a0008", "a0003",
+      "a0001", "a0000h", "a00008", "a00003", "a00001", "a00000h", "a000008", "a000003", "a000001", "a000000h"
+    ]
+  },
+  "bisectionNarrowingLo": {
+    "description": "Repeated between(lo, hi) with hi held fixed and lo replaced by each successive result -- the mirror-image worst case. Each entry must satisfy previousLo < key < hi, and recomputing between(previousLo, hi) must reproduce it exactly.",
+    "initialLo": "a0",
+    "hi": "z0",
+    "keys": [
+      "m", "s", "v", "x", "y", "yh", "yq", "yv", "yx", "yy",
+      "yz", "yzh", "yzq", "yzv", "yzx", "yzy", "yzz", "yzzh", "yzzq", "yzzv",
+      "yzzx", "yzzy", "yzzz", "yzzzh", "yzzzq", "yzzzv", "yzzzx", "yzzzy", "yzzzz", "yzzzzh"
+    ]
+  }
+}

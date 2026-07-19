@@ -134,13 +134,20 @@ Each phase = one meaningful commit (per the commit convention).
    `docs/aws-deploy.md` → Observability), confirmed working in prod
    2026-07-19: both SSM parameters (`DASH0_AUTH_TOKEN`, `DASH0_ENDPOINT`)
    set, deploy green, telemetry flowing to Dash0.
-4. **Open bugs** (pre-existing, not deploy-blocking): BUG-8 — Java
-   `FractionalIndex` and TS `fractionalIndex.ts` use incompatible algorithms
-   (no reorder UI wired yet; fix = unify algorithm + shared cross-language
-   test vectors). Related, found 2026-07-18 while writing coverage tests:
-   `FractionalIndex.between("b0", "b0a")` returns `"b0am"`, which sorts
-   *after* `"b0a"` — violates the strictly-between contract (`between` is
-   unused by production code today; fold the fix into BUG-8). Minor: 405
+4. **Open bugs** (pre-existing, not deploy-blocking): ~~BUG-8~~ **fixed
+   2026-07-19** (Phase 0 of `docs/plans/section-grouping.md`) — Java
+   `FractionalIndex` and TS `fractionalIndex.ts` were byte-for-byte identical
+   mirrors of the same padding-based algorithm, which broke the
+   strictly-between contract whenever the shorter key, padded with the
+   alphabet's lowest character, collided with the longer key exactly (e.g.
+   `between("b0", "b0a")` used to return `"b0am"`, sorting *after* `"b0a"`).
+   Replaced with a base-36 (`0-9a-z`) digit-walk algorithm that treats "past
+   the end of the string" as a true sentinel (never a stand-in for the
+   lowest real digit) and never lets a generated key end in the alphabet's
+   minimum digit, so it can't set up an unsolvable future pairing either.
+   Pinned identically across languages by `shared/fractional-index-vectors.json`,
+   loaded by both `FractionalIndexTest` (JUnit) and `fractionalIndex.test.ts`
+   (Vitest), plus property tests in both suites. Minor: 405
    mapped to 500 by `ApiExceptionHandler`; `SseEventPublisher.send` only
    catches `IOException`.
 
