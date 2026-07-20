@@ -47,4 +47,17 @@ class SseControllerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(401);
         verify(sseEventPublisher, never()).subscribe(LIST_ID);
     }
+
+    @Test
+    void subscribeWithTokenScopedToAnotherListReturns403() {
+        var controller = new SseController(sseEventPublisher, sseTokenService);
+        UUID otherListId = UUID.randomUUID();
+        when(sseTokenService.validateSseToken("mismatched"))
+            .thenReturn(new SseTokenService.SseClaims(UUID.randomUUID(), otherListId));
+
+        var response = controller.subscribe(LIST_ID, "mismatched");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(403);
+        verify(sseEventPublisher, never()).subscribe(LIST_ID);
+    }
 }

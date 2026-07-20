@@ -28,10 +28,14 @@ public class SseController {
     public ResponseEntity<SseEmitter> subscribe(
             @PathVariable UUID listId,
             @RequestParam String token) {
+        SseTokenService.SseClaims claims;
         try {
-            sseTokenService.validateSseToken(token);
+            claims = sseTokenService.validateSseToken(token);
         } catch (Exception e) {
             return ResponseEntity.status(401).build();
+        }
+        if (!claims.listId().equals(listId)) {
+            return ResponseEntity.status(403).build();
         }
         return ResponseEntity.ok(sseEventPublisher.subscribe(listId));
     }

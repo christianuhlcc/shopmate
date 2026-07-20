@@ -2,9 +2,7 @@ package com.shopmate.adapter.out.persistence;
 
 import com.shopmate.adapter.out.persistence.entity.ShoppingItemEntity;
 import com.shopmate.adapter.out.persistence.entity.ShoppingListEntity;
-import com.shopmate.adapter.out.persistence.entity.UserEntity;
 import com.shopmate.adapter.out.persistence.repository.SpringDataShoppingListRepository;
-import com.shopmate.adapter.out.persistence.repository.SpringDataUserRepository;
 import com.shopmate.domain.model.LwwField;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
@@ -16,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -24,12 +21,9 @@ import java.util.stream.Collectors;
 public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
 
     private final SpringDataShoppingListRepository listJpa;
-    private final SpringDataUserRepository userJpa;
 
-    public ShoppingListRepositoryAdapter(SpringDataShoppingListRepository listJpa,
-                                          SpringDataUserRepository userJpa) {
+    public ShoppingListRepositoryAdapter(SpringDataShoppingListRepository listJpa) {
         this.listJpa = listJpa;
-        this.userJpa = userJpa;
     }
 
     @Override
@@ -40,8 +34,8 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ShoppingList> findAllByMemberId(UUID userId) {
-        return listJpa.findAllByMemberId(userId).stream()
+    public List<ShoppingList> findAllByGroupId(UUID groupId) {
+        return listJpa.findAllByGroupId(groupId).stream()
             .map(this::toDomain)
             .toList();
     }
@@ -50,19 +44,9 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
     @Transactional
     public ShoppingList save(ShoppingList list) {
         ShoppingListEntity entity = listJpa.findById(list.id())
-            .orElseGet(() -> {
-                ShoppingListEntity e = new ShoppingListEntity(list.id(), list.name(), list.ownerId(), list.createdAt());
-                return e;
-            });
+            .orElseGet(() -> new ShoppingListEntity(list.id(), list.name(), list.ownerId(), list.groupId(), list.createdAt()));
 
         entity.setName(list.name());
-
-        // Sync members
-        Set<UserEntity> memberEntities = list.memberIds().stream()
-            .map(id -> userJpa.findById(id).orElseThrow(() -> new IllegalStateException("User not found: " + id)))
-            .collect(Collectors.toSet());
-        entity.getMembers().clear();
-        entity.getMembers().addAll(memberEntities);
 
         // Sync items — merge-at-save using domain LWW logic
         Map<UUID, ShoppingItemEntity> existingById = entity.getItems().stream()
@@ -117,19 +101,14 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
     }
 
     ShoppingList toDomain(ShoppingListEntity e) {
-        Set<UUID> memberIds = e.getMembers().stream()
-            .map(UserEntity::getId)
-            .collect(Collectors.toSet());
-        memberIds.add(e.getOwnerId()); // owner is always a member
-
         Map<UUID, ShoppingItem> items = new HashMap<>();
         for (ShoppingItemEntity item : e.getItems()) {
             ShoppingItem domainItem = toDomain(item);
             items.put(domainItem.id(), domainItem);
         }
 
-        return new ShoppingList(e.getId(), e.getName(), e.getOwnerId(),
-            Set.copyOf(memberIds), Map.copyOf(items), e.getCreatedAt());
+        return new ShoppingList(e.getId(), e.getName(), e.getOwnerId(), e.getGroupId(),
+            Map.copyOf(items), e.getCreatedAt());
     }
 
     private ShoppingItem toDomain(ShoppingItemEntity e) {

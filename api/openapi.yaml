@@ -18,8 +18,10 @@ tags:
     description: Shopping list management
   - name: Items
     description: Shopping item CRDT mutations
-  - name: Members
-    description: List membership management
+  - name: Groups
+    description: Group (tenant) operations
+  - name: Invites
+    description: Invite code issuance and redemption
   - name: Events
     description: Real-time SSE event streaming
 
@@ -209,52 +211,80 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
 
-  /lists/{listId}/members:
+  /groups/me:
+    get:
+      tags: [Groups]
+      operationId: getMyGroup
+      summary: Get the current user's group, including its members
+      responses:
+        "200":
+          description: The caller's group
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/NoGroup'
+
+  /invites:
     post:
-      tags: [Members]
-      operationId: addMember
-      summary: Share a list with another user by email (owner only)
-      parameters:
-        - $ref: '#/components/parameters/ListId'
+      tags: [Invites]
+      operationId: createInvite
+      summary: Create a single-use invite code (JOIN_GROUP or NEW_GROUP)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AddMemberRequest'
+              $ref: '#/components/schemas/CreateInviteRequest'
       responses:
-        "200":
-          description: Updated list with new member
+        "201":
+          description: Created invite code
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ShoppingList'
+                $ref: '#/components/schemas/InviteCodeResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
-        "404":
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/NoGroup'
 
-  /lists/{listId}/members/{userId}:
-    delete:
-      tags: [Members]
-      operationId: removeMember
-      summary: Remove a member from a list (owner only, or self-remove)
-      parameters:
-        - $ref: '#/components/parameters/ListId'
-        - $ref: '#/components/parameters/UserId'
+  /invites/redeem:
+    post:
+      tags: [Invites]
+      operationId: redeemInvite
+      summary: Redeem an invite code, joining or creating a group
+      description: |
+        JOIN_GROUP codes add the caller to the issuer's group. NEW_GROUP codes
+        create a brand-new group named by the redeemer; if groupName is omitted
+        on a NEW_GROUP code, the request fails with 400 GROUP_NAME_REQUIRED so
+        the client can prompt for a name and resubmit — the response never
+        reveals the invite's type up front.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemInviteRequest'
       responses:
-        "204":
-          description: Member removed
+        "200":
+          description: Updated user profile with group set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "400":
+          $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "404":
-          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
 
   /lists/{listId}/sse-token:
     post:
@@ -327,13 +357,6 @@ components:
       schema:
         type: string
         format: uuid
-    UserId:
-      name: userId
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
 
   responses:
     BadRequest:
@@ -354,14 +377,28 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    NoGroup:
+      description: >-
+        Authenticated user does not belong to a group yet (code: NO_GROUP).
+        Distinct from Forbidden so the frontend can route to onboarding.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Conflicting state (e.g. already in a group)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     UnprocessableEntity:
-      description: Business rule violation (e.g. list is full)
+      description: Business rule violation (e.g. list is full, invite invalid/expired)
       content:
         application/json:
           schema:
@@ -383,10 +420,15 @@ components:
         avatarUrl:
           type: string
           nullable: true
+        group:
+          allOf:
+            - $ref: '#/components/schemas/GroupSummary'
+          description: Absent or null means the user has not yet joined a group.
+          nullable: true
 
     ShoppingList:
       type: object
-      required: [id, name, ownerId, members, createdAt]
+      required: [id, name, ownerId, groupId, createdAt]
       properties:
         id:
           type: string
@@ -396,10 +438,9 @@ components:
         ownerId:
           type: string
           format: uuid
-        members:
-          type: array
-          items:
-            $ref: '#/components/schemas/UserProfile'
+        groupId:
+          type: string
+          format: uuid
         createdAt:
           type: string
           format: date-time
@@ -541,13 +582,68 @@ components:
           minLength: 1
           maxLength: 100
 
-    AddMemberRequest:
+    GroupSummary:
       type: object
-      required: [email]
+      required: [id, name]
       properties:
-        email:
+        id:
           type: string
-          format: email
+          format: uuid
+        name:
+          type: string
+
+    GroupResponse:
+      type: object
+      required: [id, name, createdAt, members]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserProfile'
+
+    InviteType:
+      type: string
+      enum: [JOIN_GROUP, NEW_GROUP]
+
+    CreateInviteRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/InviteType'
+
+    InviteCodeResponse:
+      type: object
+      required: [code, type, expiresAt]
+      properties:
+        code:
+          type: string
+        type:
+          $ref: '#/components/schemas/InviteType'
+        expiresAt:
+          type: string
+          format: date-time
+
+    RedeemInviteRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+        groupName:
+          type: string
+          maxLength: 100
+          description: >-
+            Required only when redeeming a NEW_GROUP code; omitting it on a
+            NEW_GROUP code returns 400 GROUP_NAME_REQUIRED.
 
     AuthCodeRequest:
       type: object

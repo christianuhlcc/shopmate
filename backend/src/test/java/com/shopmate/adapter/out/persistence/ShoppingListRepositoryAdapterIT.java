@@ -2,8 +2,10 @@ package com.shopmate.adapter.out.persistence;
 
 import com.shopmate.domain.model.ItemChange;
 import com.shopmate.domain.model.ItemField;
+import com.shopmate.domain.model.Group;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
+import com.shopmate.domain.port.out.GroupRepository;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -41,40 +43,62 @@ class ShoppingListRepositoryAdapterIT {
 
     @Autowired ShoppingListRepository listRepository;
     @Autowired UserRepository userRepository;
+    @Autowired GroupRepository groupRepository;
+
+    /** shopping_lists.group_id is NOT NULL and FK-constrained after V5, so every fixture needs a real group row. */
+    private UUID newGroup() {
+        return groupRepository.save(new Group(UUID.randomUUID(), "Test Group", java.time.Instant.now())).id();
+    }
 
     @Test
-    void saveAndFindListWithMember() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "owner@test.com", "Owner", null, null));
+    void saveAndFindList() {
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "owner@test.com", "Owner", null, groupId));
         ShoppingList list = listRepository.save(new ShoppingList(
             UUID.randomUUID(), "Groceries", owner.id(),
-            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+            groupId, java.util.Map.of(), java.time.Instant.now()));
 
         var found = listRepository.findById(list.id());
         assertThat(found).isPresent();
         assertThat(found.get().name()).isEqualTo("Groceries");
-        assertThat(found.get().memberIds()).contains(owner.id());
+        assertThat(found.get().groupId()).isEqualTo(groupId);
     }
 
     @Test
-    void findAllByMemberId() {
-        User user = userRepository.save(new User(UUID.randomUUID(), "member@test.com", "Member", null, null));
-        ShoppingList list = listRepository.save(new ShoppingList(
-            UUID.randomUUID(), "My List", user.id(),
-            java.util.Set.of(user.id()), java.util.Map.of(), java.time.Instant.now()));
+    void findAllByGroupIdIncludesListsOwnedByOtherMembers() {
+        // The core group-tenancy guarantee: a list owned by one member is visible to
+        // every other member of the same group, with no per-list sharing step.
+        UUID groupId = newGroup();
+        UUID otherGroupId = newGroup();
+        User alice = userRepository.save(new User(UUID.randomUUID(), "alice@test.com", "Alice", null, groupId));
+        userRepository.save(new User(UUID.randomUUID(), "bob@test.com", "Bob", null, groupId));
 
-        List<ShoppingList> lists = listRepository.findAllByMemberId(user.id());
-        assertThat(lists).extracting(ShoppingList::id).contains(list.id());
+        ShoppingList aliceList = listRepository.save(new ShoppingList(
+            UUID.randomUUID(), "Alice's List", alice.id(),
+            groupId, java.util.Map.of(), java.time.Instant.now()));
+        User outsider = userRepository.save(
+            new User(UUID.randomUUID(), "outsider@test.com", "Outsider", null, otherGroupId));
+        ShoppingList outsiderList = listRepository.save(new ShoppingList(
+            UUID.randomUUID(), "Outsider List", outsider.id(),
+            otherGroupId, java.util.Map.of(), java.time.Instant.now()));
+
+        // Bob queries by the shared group and sees Alice's list, but never the other group's.
+        List<ShoppingList> lists = listRepository.findAllByGroupId(groupId);
+        assertThat(lists).extracting(ShoppingList::id)
+            .contains(aliceList.id())
+            .doesNotContain(outsiderList.id());
     }
 
     @Test
     void lwwMergePersistedCorrectly() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "lww@test.com", "LWW User", null, null));
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "lww@test.com", "LWW User", null, groupId));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
         ShoppingList list = listRepository.save(new ShoppingList(
             listId, "LWW List", owner.id(),
-            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+            groupId, java.util.Map.of(), java.time.Instant.now()));
 
         // Apply name change
         ItemChange change = new ItemChange(itemId, listId, ItemField.NAME, "Milk", 100L, owner.id());
@@ -93,13 +117,14 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void olderChangeDoesNotOverwriteNewer() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "stale@test.com", "Stale User", null, null));
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "stale@test.com", "Stale User", null, groupId));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
         ShoppingList list = listRepository.save(new ShoppingList(
             listId, "Stale Test", owner.id(),
-            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+            groupId, java.util.Map.of(), java.time.Instant.now()));
 
         // Apply newer change first
         ItemChange newer = new ItemChange(itemId, listId, ItemField.NAME, "Correct", 200L, owner.id());
@@ -115,13 +140,14 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void updatesToEveryLwwFieldArePersisted() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "fields@test.com", "Fields User", null, null));
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "fields@test.com", "Fields User", null, groupId));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
         ShoppingList list = listRepository.save(new ShoppingList(
             listId, "Fields Test", owner.id(),
-            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+            groupId, java.util.Map.of(), java.time.Instant.now()));
 
         listRepository.save(list.applyChange(
             new ItemChange(itemId, listId, ItemField.NAME, "Milk", 100L, owner.id())));
@@ -146,13 +172,14 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void sectionDefaultsToSonstigesAndRoundTrips() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "section@test.com", "Section User", null, null));
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "section@test.com", "Section User", null, groupId));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
         ShoppingList list = listRepository.save(new ShoppingList(
             listId, "Section Test", owner.id(),
-            java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
+            groupId, java.util.Map.of(), java.time.Instant.now()));
 
         listRepository.save(list.applyChange(
             new ItemChange(itemId, listId, ItemField.NAME, "Milch", 100L, owner.id())));

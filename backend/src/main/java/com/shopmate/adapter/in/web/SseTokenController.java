@@ -1,5 +1,6 @@
 package com.shopmate.adapter.in.web;
 
+import com.shopmate.domain.port.in.ShoppingListUseCase;
 import com.shopmate.generated.model.SseTokenResponse;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import com.shopmate.infrastructure.security.SseTokenService;
@@ -17,15 +18,20 @@ public class SseTokenController {
 
     private final SseTokenService sseTokenService;
     private final SecurityContextHelper securityContextHelper;
+    private final ShoppingListUseCase shoppingListUseCase;
 
-    public SseTokenController(SseTokenService sseTokenService, SecurityContextHelper securityContextHelper) {
+    public SseTokenController(SseTokenService sseTokenService,
+                               SecurityContextHelper securityContextHelper,
+                               ShoppingListUseCase shoppingListUseCase) {
         this.sseTokenService = sseTokenService;
         this.securityContextHelper = securityContextHelper;
+        this.shoppingListUseCase = shoppingListUseCase;
     }
 
     @PostMapping
     public ResponseEntity<SseTokenResponse> getSseToken(@PathVariable UUID listId) {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
+        shoppingListUseCase.assertListAccess(listId, currentUserId);
         String token = sseTokenService.issueSseToken(currentUserId, listId);
         return ResponseEntity.ok(new SseTokenResponse(token));
     }

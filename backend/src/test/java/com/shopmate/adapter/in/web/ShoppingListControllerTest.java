@@ -4,16 +4,12 @@ import com.shopmate.domain.model.ItemChange;
 import com.shopmate.domain.model.LwwField;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
-import com.shopmate.domain.model.User;
 import com.shopmate.domain.port.in.ShoppingListUseCase;
-import com.shopmate.domain.port.out.UserRepository;
 import com.shopmate.generated.model.AddItemRequest;
-import com.shopmate.generated.model.AddMemberRequest;
 import com.shopmate.generated.model.CreateListRequest;
 import com.shopmate.generated.model.ItemChangeRequest;
 import com.shopmate.generated.model.ItemField;
 import com.shopmate.generated.model.ShoppingListWithItems;
-import com.shopmate.generated.model.UserProfile;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,8 +22,6 @@ import org.springframework.http.ResponseEntity;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,19 +35,18 @@ class ShoppingListControllerTest {
 
     @Mock ShoppingListUseCase shoppingListUseCase;
     @Mock SecurityContextHelper securityContextHelper;
-    @Mock UserRepository userRepository;
 
     ShoppingListController controller;
 
     private static final UUID USER_ID = UUID.randomUUID();
-    private static final UUID OTHER_ID = UUID.randomUUID();
+    private static final UUID GROUP_ID = UUID.randomUUID();
     private static final UUID LIST_ID = UUID.randomUUID();
     private static final UUID ITEM_ID = UUID.randomUUID();
     private static final Instant CREATED_AT = Instant.parse("2026-07-01T10:00:00Z");
 
     @BeforeEach
     void setUp() {
-        controller = new ShoppingListController(shoppingListUseCase, securityContextHelper, userRepository);
+        controller = new ShoppingListController(shoppingListUseCase, securityContextHelper);
         when(securityContextHelper.getCurrentUserId()).thenReturn(USER_ID);
     }
 
@@ -69,16 +62,12 @@ class ShoppingListControllerTest {
     }
 
     private ShoppingList list(Map<UUID, ShoppingItem> items) {
-        return new ShoppingList(LIST_ID, "Groceries", USER_ID,
-            Set.of(USER_ID, OTHER_ID), items, CREATED_AT);
+        return new ShoppingList(LIST_ID, "Groceries", USER_ID, GROUP_ID, items, CREATED_AT);
     }
 
     @Test
     void getListsMapsDomainListsToDtos() {
         when(shoppingListUseCase.getListsForUser(USER_ID)).thenReturn(List.of(list(Map.of())));
-        when(userRepository.findById(USER_ID))
-            .thenReturn(Optional.of(new User(USER_ID, "me@example.com", "Me", "http://pic", null)));
-        when(userRepository.findById(OTHER_ID)).thenReturn(Optional.empty());
 
         ResponseEntity<List<com.shopmate.generated.model.ShoppingList>> response = controller.getLists();
 
@@ -87,38 +76,30 @@ class ShoppingListControllerTest {
         assertThat(dto.getId()).isEqualTo(LIST_ID);
         assertThat(dto.getName()).isEqualTo("Groceries");
         assertThat(dto.getOwnerId()).isEqualTo(USER_ID);
-        assertThat(dto.getMembers()).hasSize(2);
-        // Known member is mapped with profile data; unknown member falls back to blank profile
-        UserProfile known = dto.getMembers().stream()
-            .filter(m -> m.getId().equals(USER_ID)).findFirst().orElseThrow();
-        assertThat(known.getEmail()).isEqualTo("me@example.com");
-        assertThat(known.getAvatarUrl()).isEqualTo("http://pic");
-        UserProfile unknown = dto.getMembers().stream()
-            .filter(m -> m.getId().equals(OTHER_ID)).findFirst().orElseThrow();
-        assertThat(unknown.getEmail()).isEmpty();
+        assertThat(dto.getGroupId()).isEqualTo(GROUP_ID);
     }
 
     @Test
     void createListReturns201WithDto() {
         when(shoppingListUseCase.createList(USER_ID, "Weekend")).thenReturn(list(Map.of()));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
 
         var response = controller.createList(new CreateListRequest("Weekend"));
 
         assertThat(response.getStatusCode().value()).isEqualTo(201);
         assertThat(response.getBody().getId()).isEqualTo(LIST_ID);
+        assertThat(response.getBody().getGroupId()).isEqualTo(GROUP_ID);
     }
 
     @Test
     void getListReturnsListWithItems() {
         ShoppingItem milk = item("Milk");
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(list(Map.of(ITEM_ID, milk)));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
 
         ResponseEntity<ShoppingListWithItems> response = controller.getList(LIST_ID);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         ShoppingListWithItems dto = response.getBody();
+        assertThat(dto.getGroupId()).isEqualTo(GROUP_ID);
         assertThat(dto.getItems()).hasSize(1);
         com.shopmate.generated.model.ShoppingItem itemDto = dto.getItems().get(0);
         assertThat(itemDto.getId()).isEqualTo(ITEM_ID);
@@ -193,24 +174,5 @@ class ShoppingListControllerTest {
         var response = controller.deleteItem(LIST_ID, ITEM_ID);
         assertThat(response.getStatusCode().value()).isEqualTo(204);
         verify(shoppingListUseCase).deleteItem(LIST_ID, ITEM_ID, USER_ID);
-    }
-
-    @Test
-    void addMemberReturnsUpdatedList() {
-        when(shoppingListUseCase.addMember(LIST_ID, "friend@example.com", USER_ID))
-            .thenReturn(list(Map.of()));
-        when(userRepository.findById(any())).thenReturn(Optional.empty());
-
-        var response = controller.addMember(LIST_ID, new AddMemberRequest("friend@example.com"));
-
-        assertThat(response.getStatusCode().value()).isEqualTo(200);
-        assertThat(response.getBody().getMembers()).hasSize(2);
-    }
-
-    @Test
-    void removeMemberReturns204() {
-        var response = controller.removeMember(LIST_ID, OTHER_ID);
-        assertThat(response.getStatusCode().value()).isEqualTo(204);
-        verify(shoppingListUseCase).removeMember(LIST_ID, OTHER_ID, USER_ID);
     }
 }

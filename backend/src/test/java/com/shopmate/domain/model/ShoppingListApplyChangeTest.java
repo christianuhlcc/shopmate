@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,11 +12,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ShoppingListApplyChangeTest {
 
     private static final UUID OWNER = UUID.randomUUID();
+    private static final UUID GROUP_ID = UUID.randomUUID();
     private static final UUID LIST_ID = UUID.randomUUID();
     private static final UUID ITEM_ID = UUID.randomUUID();
 
     private ShoppingList emptyList() {
-        return new ShoppingList(LIST_ID, "Groceries", OWNER, Set.of(OWNER), Map.of(), Instant.now());
+        return new ShoppingList(LIST_ID, "Groceries", OWNER, GROUP_ID, Map.of(), Instant.now());
     }
 
     @Test
@@ -83,7 +83,7 @@ class ShoppingListApplyChangeTest {
         Map<UUID, ShoppingItem> items = new HashMap<>();
         items.put(idA, itemA);
         items.put(idB, itemB);
-        var listWithItems = new ShoppingList(LIST_ID, "Groceries", OWNER, Set.of(OWNER), Map.copyOf(items), Instant.now());
+        var listWithItems = new ShoppingList(LIST_ID, "Groceries", OWNER, GROUP_ID, Map.copyOf(items), Instant.now());
         var active = listWithItems.activeItems();
         assertThat(active.get(0).name().value()).isEqualTo("Eggs");   // "a0" < "b0"
         assertThat(active.get(1).name().value()).isEqualTo("Milk");

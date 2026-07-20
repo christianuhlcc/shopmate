@@ -20,7 +20,11 @@ public interface ShoppingListUseCase {
 
     ShoppingList deleteItem(UUID listId, UUID itemId, UUID requestingUserId);
 
-    ShoppingList addMember(UUID listId, String memberEmail, UUID requestingUserId);
-
-    void removeMember(UUID listId, UUID memberId, UUID requestingUserId);
+    /**
+     * Verifies that {@code userId} may access {@code listId} (same group), throwing
+     * {@link com.shopmate.domain.model.NoGroupException} or
+     * {@link com.shopmate.domain.model.AccessForbiddenException} otherwise. Used by SSE
+     * token issuance, which needs the access check without needing the list itself.
+     */
+    void assertListAccess(UUID listId, UUID userId);
 }

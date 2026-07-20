@@ -1,9 +1,11 @@
 package com.shopmate.adapter.out.persistence;
 
 import com.shopmate.adapter.out.persistence.repository.SpringDataShoppingListRepository;
+import com.shopmate.domain.model.Group;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
 import com.shopmate.domain.port.out.SectionCorrectionRepository;
+import com.shopmate.domain.port.out.GroupRepository;
 import com.shopmate.domain.port.out.ShoppingListRepository;
 import com.shopmate.domain.port.out.UserRepository;
 import com.shopmate.domain.section.Section;
@@ -19,7 +21,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,14 +47,17 @@ class SectionCorrectionRepositoryAdapterIT {
     @Autowired ShoppingListRepository listRepository;
     @Autowired UserRepository userRepository;
     @Autowired SpringDataShoppingListRepository listJpa;
+    @Autowired GroupRepository groupRepository;
 
     private static int ownerCounter = 0;
 
     private UUID createListAndOwner() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), nextOwnerEmail(), "Owner", null, null));
+        // shopping_lists.group_id is NOT NULL and FK-constrained after V5.
+        UUID groupId = groupRepository.save(new Group(UUID.randomUUID(), "Test Group", Instant.now())).id();
+        User owner = userRepository.save(new User(UUID.randomUUID(), nextOwnerEmail(), "Owner", null, groupId));
         UUID listId = UUID.randomUUID();
         ShoppingList list = new ShoppingList(listId, "Section Correction Test", owner.id(),
-            Set.of(owner.id()), Map.of(), Instant.now());
+            groupId, Map.of(), Instant.now());
         listRepository.save(list);
         return listId;
     }

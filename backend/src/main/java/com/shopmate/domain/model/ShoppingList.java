@@ -5,14 +5,13 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 public record ShoppingList(
     UUID id,
     String name,
     UUID ownerId,
-    Set<UUID> memberIds,
+    UUID groupId,
     Map<UUID, ShoppingItem> items,
     Instant createdAt
 ) {
@@ -24,7 +23,7 @@ public record ShoppingList(
             : existing.applyChange(change);
         Map<UUID, ShoppingItem> newItems = new HashMap<>(items);
         newItems.put(updated.id(), updated);
-        return new ShoppingList(id, name, ownerId, memberIds, Map.copyOf(newItems), createdAt);
+        return new ShoppingList(id, name, ownerId, groupId, Map.copyOf(newItems), createdAt);
     }
 
     public List<ShoppingItem> activeItems() {
@@ -36,10 +35,6 @@ public record ShoppingList(
             .sorted(Comparator.comparing((ShoppingItem i) -> i.sortKey().value())
                 .thenComparing(i -> i.id().toString()))
             .toList();
-    }
-
-    public boolean isMember(UUID userId) {
-        return ownerId.equals(userId) || memberIds.contains(userId);
     }
 
     public boolean isOwner(UUID userId) {

@@ -7,10 +7,10 @@ import com.shopmate.domain.model.ItemField;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.LwwField;
+import com.shopmate.domain.model.NoGroupException;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
-import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.domain.port.out.EventPublisher;
 import com.shopmate.domain.port.out.SectionCorrectionRepository;
 import com.shopmate.domain.port.out.ShoppingListRepository;
@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -40,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -58,13 +58,34 @@ class ShoppingListServiceTest {
     private static final UUID OWNER_ID = UUID.randomUUID();
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final UUID STRANGER_ID = UUID.randomUUID();
+    private static final UUID GROUPLESS_ID = UUID.randomUUID();
     private static final UUID LIST_ID = UUID.randomUUID();
+
+    private static final UUID GROUP_ID = UUID.randomUUID();
+    private static final UUID OTHER_GROUP_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         SectionClassifier sectionClassifier = new SectionClassifier(new SectionDictionary());
         service = new ShoppingListService(listRepository, userRepository, eventPublisher, sectionClassifier,
             sectionCorrectionRepository);
+
+        // Every public operation now resolves the caller's group first, so all four
+        // personas must be stubbed. Lenient: individual tests only exercise some of them.
+        // OWNER and MEMBER share a group — MEMBER is a non-owner peer, which is the
+        // capability that replaces per-list sharing. STRANGER is in a different group.
+        lenient().when(userRepository.findById(OWNER_ID))
+            .thenReturn(Optional.of(user(OWNER_ID, "owner@example.com", GROUP_ID)));
+        lenient().when(userRepository.findById(MEMBER_ID))
+            .thenReturn(Optional.of(user(MEMBER_ID, "member@example.com", GROUP_ID)));
+        lenient().when(userRepository.findById(STRANGER_ID))
+            .thenReturn(Optional.of(user(STRANGER_ID, "stranger@example.com", OTHER_GROUP_ID)));
+        lenient().when(userRepository.findById(GROUPLESS_ID))
+            .thenReturn(Optional.of(user(GROUPLESS_ID, "nogroup@example.com", null)));
+    }
+
+    private static User user(UUID id, String email, UUID groupId) {
+        return new User(id, email, "Test User", null, groupId);
     }
 
     private ShoppingList listWithNItems(int n) {
@@ -82,7 +103,7 @@ class ShoppingListServiceTest {
                 Map.of()));
         }
         return new ShoppingList(LIST_ID, "Test List", OWNER_ID,
-            Set.of(OWNER_ID, MEMBER_ID), Map.copyOf(items), Instant.now());
+            GROUP_ID, Map.copyOf(items), Instant.now());
     }
 
     private ShoppingList emptyList() {
@@ -166,28 +187,6 @@ class ShoppingListServiceTest {
     }
 
     @Test
-    void addMemberRequiresOwner() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        assertThatThrownBy(() -> service.addMember(LIST_ID, "someone@example.com", MEMBER_ID))
-            .isInstanceOf(AccessForbiddenException.class);
-    }
-
-    @Test
-    void removeMemberAllowsSelfRemoval() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        service.removeMember(LIST_ID, MEMBER_ID, MEMBER_ID);
-        verify(listRepository).save(any());
-    }
-
-    @Test
-    void removeMemberForbiddenForOtherMember() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        assertThatThrownBy(() -> service.removeMember(LIST_ID, OWNER_ID, MEMBER_ID))
-            .isInstanceOf(AccessForbiddenException.class);
-    }
-
-    @Test
     void addItemPublishesAllSixFieldChanges() {
         when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
         when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -268,21 +267,78 @@ class ShoppingListServiceTest {
     }
 
     @Test
-    void getListsForUserDelegatesToRepository() {
+    void getListsForUserReturnsAllListsInCallersGroup() {
         List<ShoppingList> lists = List.of(emptyList());
-        when(listRepository.findAllByMemberId(MEMBER_ID)).thenReturn(lists);
+        when(listRepository.findAllByGroupId(GROUP_ID)).thenReturn(lists);
         assertThat(service.getListsForUser(MEMBER_ID)).isEqualTo(lists);
     }
 
+    // --- Group scoping (ADR-0013) -------------------------------------------------
+
     @Test
-    void createListSavesListWithOwnerAsSoleMember() {
+    void everyOperationRejectsGroupLessCaller() {
+        // A signed-in user who has not redeemed an invite can do NOTHING with lists.
+        // This is the NO_GROUP contract the frontend uses to route to onboarding, so
+        // it must hold on every entry point, not just the read paths.
+        var change = new ItemChange(UUID.randomUUID(), LIST_ID, ItemField.NAME, "Milk", 100L, GROUPLESS_ID);
+
+        assertThatThrownBy(() -> service.getListsForUser(GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.createList(GROUPLESS_ID, "Nope"))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.getList(LIST_ID, GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.addItem(LIST_ID, "Milk", "1", GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.applyItemChange(LIST_ID, change, GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.deleteItem(LIST_ID, UUID.randomUUID(), GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        assertThatThrownBy(() -> service.assertListAccess(LIST_ID, GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void sameGroupNonOwnerCanMutateList() {
+        // The core capability that replaces per-list sharing: MEMBER does not own the
+        // list and was never explicitly added to it, but shares OWNER's group.
+        ShoppingList list = emptyList();
+        assertThat(list.isOwner(MEMBER_ID)).isFalse();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(list));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList saved = service.addItem(LIST_ID, "Butter", "1", MEMBER_ID);
+
+        assertThat(saved.items()).hasSize(1);
+        verify(listRepository).save(any());
+    }
+
+    @Test
+    void assertListAccessPassesForSameGroup() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        service.assertListAccess(LIST_ID, MEMBER_ID);
+    }
+
+    @Test
+    void assertListAccessRejectsOtherGroup() {
+        // Guards SSE token issuance: without this a stranger could mint a token for
+        // another household's list and stream it live.
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
+        assertThatThrownBy(() -> service.assertListAccess(LIST_ID, STRANGER_ID))
+            .isInstanceOf(AccessForbiddenException.class);
+    }
+
+    @Test
+    void createListStampsCallersGroup() {
         when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         ShoppingList created = service.createList(OWNER_ID, "Weekend");
 
         assertThat(created.name()).isEqualTo("Weekend");
         assertThat(created.ownerId()).isEqualTo(OWNER_ID);
-        assertThat(created.memberIds()).containsExactly(OWNER_ID);
+        assertThat(created.groupId()).isEqualTo(GROUP_ID);
         assertThat(created.items()).isEmpty();
     }
 
@@ -344,46 +400,6 @@ class ShoppingListServiceTest {
         verify(eventPublisher).publishItemChange(eq(LIST_ID), captor.capture());
         assertThat(captor.getValue().field()).isEqualTo(ItemField.DELETED);
         assertThat(captor.getValue().serializedValue()).isEqualTo("true");
-    }
-
-    @Test
-    void addMemberAddsUserFoundByEmail() {
-        UUID newMemberId = UUID.randomUUID();
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        when(userRepository.findByEmail("friend@example.com"))
-            .thenReturn(Optional.of(new User(newMemberId, "friend@example.com", "Friend", null, null)));
-        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        ShoppingList updated = service.addMember(LIST_ID, "friend@example.com", OWNER_ID);
-
-        assertThat(updated.memberIds()).contains(OWNER_ID, MEMBER_ID, newMemberId);
-    }
-
-    @Test
-    void addMemberThrowsWhenEmailUnknown() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        when(userRepository.findByEmail("ghost@example.com")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.addMember(LIST_ID, "ghost@example.com", OWNER_ID))
-            .isInstanceOf(UserNotFoundException.class);
-    }
-
-    @Test
-    void removeMemberIsIdempotentForNonMember() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        service.removeMember(LIST_ID, STRANGER_ID, OWNER_ID);
-        verify(listRepository, never()).save(any());
-    }
-
-    @Test
-    void ownerCanRemoveOtherMember() {
-        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
-        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        service.removeMember(LIST_ID, MEMBER_ID, OWNER_ID);
-
-        ArgumentCaptor<ShoppingList> captor = ArgumentCaptor.forClass(ShoppingList.class);
-        verify(listRepository).save(captor.capture());
-        assertThat(captor.getValue().memberIds()).doesNotContain(MEMBER_ID);
     }
 
     @Test

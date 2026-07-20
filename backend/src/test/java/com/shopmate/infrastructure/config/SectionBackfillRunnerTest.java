@@ -29,7 +29,8 @@ class SectionBackfillRunnerTest {
     private final SectionClassifier sectionClassifier = new SectionClassifier(new SectionDictionary());
 
     private ShoppingItemEntity itemWithNameAndSectionTs(String name, long sectionTs, UUID nameModifiedBy) {
-        ShoppingListEntity list = new ShoppingListEntity(UUID.randomUUID(), "Groceries", nameModifiedBy, Instant.now());
+        ShoppingListEntity list = new ShoppingListEntity(UUID.randomUUID(), "Groceries", nameModifiedBy,
+            UUID.randomUUID(), Instant.now());
         ShoppingItemEntity item = new ShoppingItemEntity(
             UUID.randomUUID(), list,
             name, 100L, nameModifiedBy,

@@ -1,9 +1,14 @@
 package com.shopmate.adapter.in.web;
 
 import com.shopmate.domain.model.AccessForbiddenException;
+import com.shopmate.domain.model.AlreadyInGroupException;
+import com.shopmate.domain.model.GroupNameRequiredException;
 import com.shopmate.domain.model.InvalidItemException;
+import com.shopmate.domain.model.InviteExpiredException;
+import com.shopmate.domain.model.InviteInvalidException;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
+import com.shopmate.domain.model.NoGroupException;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.generated.model.ApiError;
 import org.slf4j.Logger;
@@ -49,6 +54,38 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handleUserNotFound(UserNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiError("USER_NOT_FOUND", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    // Deliberately distinct from ACCESS_FORBIDDEN: the frontend routes a NO_GROUP
+    // response to onboarding rather than treating it as a generic permission error.
+    @ExceptionHandler(NoGroupException.class)
+    public ResponseEntity<ApiError> handleNoGroup(NoGroupException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiError("NO_GROUP", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(GroupNameRequiredException.class)
+    public ResponseEntity<ApiError> handleGroupNameRequired(GroupNameRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiError("GROUP_NAME_REQUIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(AlreadyInGroupException.class)
+    public ResponseEntity<ApiError> handleAlreadyInGroup(AlreadyInGroupException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiError("ALREADY_IN_GROUP", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(InviteInvalidException.class)
+    public ResponseEntity<ApiError> handleInviteInvalid(InviteInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("INVITE_INVALID", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(InviteExpiredException.class)
+    public ResponseEntity<ApiError> handleInviteExpired(InviteExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("INVITE_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -8,6 +8,7 @@ import com.shopmate.domain.model.ItemField;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.LwwField;
+import com.shopmate.domain.model.NoGroupException;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.model.User;
@@ -23,10 +24,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -55,16 +54,18 @@ public class ShoppingListService implements ShoppingListUseCase {
 
     @Override
     public List<ShoppingList> getListsForUser(UUID userId) {
-        return listRepository.findAllByMemberId(userId);
+        User user = requireUserWithGroup(userId);
+        return listRepository.findAllByGroupId(user.groupId());
     }
 
     @Override
     public ShoppingList createList(UUID ownerId, String name) {
+        User owner = requireUserWithGroup(ownerId);
         ShoppingList list = new ShoppingList(
             UUID.randomUUID(),
             name,
             ownerId,
-            Set.of(ownerId),
+            owner.groupId(),
             Map.of(),
             Instant.now()
         );
@@ -73,13 +74,15 @@ public class ShoppingListService implements ShoppingListUseCase {
 
     @Override
     public ShoppingList getList(UUID listId, UUID requestingUserId) {
+        User user = requireUserWithGroup(requestingUserId);
         ShoppingList list = findListOrThrow(listId);
-        requireMember(list, requestingUserId);
+        requireSameGroup(list, user);
         return list;
     }
 
     @Override
     public ShoppingList addItem(UUID listId, String name, String quantity, UUID requestingUserId) {
+        User user = requireUserWithGroup(requestingUserId);
         if (name == null || name.isBlank()) {
             throw new InvalidItemException("Item name must not be blank");
         }
@@ -88,7 +91,7 @@ public class ShoppingListService implements ShoppingListUseCase {
         }
 
         ShoppingList list = findListOrThrow(listId);
-        requireMember(list, requestingUserId);
+        requireSameGroup(list, user);
 
         if (list.activeItems().size() >= MAX_ITEMS) {
             throw new ListCapacityExceededException();
@@ -118,7 +121,7 @@ public class ShoppingListService implements ShoppingListUseCase {
         Map<UUID, ShoppingItem> newItems = new HashMap<>(list.items());
         newItems.put(itemId, newItem);
         ShoppingList updated = new ShoppingList(list.id(), list.name(), list.ownerId(),
-            list.memberIds(), Map.copyOf(newItems), list.createdAt());
+            list.groupId(), Map.copyOf(newItems), list.createdAt());
 
         ShoppingList saved = listRepository.save(updated);
 
@@ -141,8 +144,9 @@ public class ShoppingListService implements ShoppingListUseCase {
 
     @Override
     public ShoppingList applyItemChange(UUID listId, ItemChange change, UUID requestingUserId) {
+        User user = requireUserWithGroup(requestingUserId);
         ShoppingList list = findListOrThrow(listId);
-        requireMember(list, requestingUserId);
+        requireSameGroup(list, user);
 
         if (change.field() == ItemField.NAME) {
             String val = change.serializedValue();
@@ -174,8 +178,9 @@ public class ShoppingListService implements ShoppingListUseCase {
 
     @Override
     public ShoppingList deleteItem(UUID listId, UUID itemId, UUID requestingUserId) {
+        User user = requireUserWithGroup(requestingUserId);
         ShoppingList list = findListOrThrow(listId);
-        requireMember(list, requestingUserId);
+        requireSameGroup(list, user);
 
         long ts = System.currentTimeMillis();
         ItemChange tombstone = new ItemChange(itemId, listId, ItemField.DELETED, "true", ts, requestingUserId);
@@ -186,35 +191,10 @@ public class ShoppingListService implements ShoppingListUseCase {
     }
 
     @Override
-    public ShoppingList addMember(UUID listId, String memberEmail, UUID requestingUserId) {
+    public void assertListAccess(UUID listId, UUID userId) {
+        User user = requireUserWithGroup(userId);
         ShoppingList list = findListOrThrow(listId);
-        requireOwner(list, requestingUserId);
-
-        User newMember = userRepository.findByEmail(memberEmail)
-            .orElseThrow(() -> new UserNotFoundException("No user with email: " + memberEmail));
-
-        Set<UUID> updatedMembers = new HashSet<>(list.memberIds());
-        updatedMembers.add(newMember.id());
-        ShoppingList updated = new ShoppingList(list.id(), list.name(), list.ownerId(),
-            Set.copyOf(updatedMembers), list.items(), list.createdAt());
-        return listRepository.save(updated);
-    }
-
-    @Override
-    public void removeMember(UUID listId, UUID memberId, UUID requestingUserId) {
-        ShoppingList list = findListOrThrow(listId);
-        // Owner can remove anyone; members can remove themselves only
-        if (!list.isOwner(requestingUserId) && !requestingUserId.equals(memberId)) {
-            throw new AccessForbiddenException("Only the list owner can remove other members");
-        }
-        if (!list.isMember(memberId)) {
-            return; // idempotent
-        }
-        Set<UUID> updatedMembers = new HashSet<>(list.memberIds());
-        updatedMembers.remove(memberId);
-        ShoppingList updated = new ShoppingList(list.id(), list.name(), list.ownerId(),
-            Set.copyOf(updatedMembers), list.items(), list.createdAt());
-        listRepository.save(updated);
+        requireSameGroup(list, user);
     }
 
     private ShoppingList findListOrThrow(UUID listId) {
@@ -222,9 +202,18 @@ public class ShoppingListService implements ShoppingListUseCase {
             .orElseThrow(() -> new ListNotFoundException(listId));
     }
 
-    private void requireMember(ShoppingList list, UUID userId) {
-        if (!list.isMember(userId)) {
-            throw new AccessForbiddenException("User is not a member of this list");
+    private User requireUserWithGroup(UUID userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new UserNotFoundException("No user with id: " + userId));
+        if (user.groupId() == null) {
+            throw new NoGroupException(userId);
+        }
+        return user;
+    }
+
+    private void requireSameGroup(ShoppingList list, User user) {
+        if (!list.groupId().equals(user.groupId())) {
+            throw new AccessForbiddenException("User's group does not have access to this list");
         }
     }
 

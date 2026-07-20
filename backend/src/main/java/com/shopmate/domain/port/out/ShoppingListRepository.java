@@ -8,6 +8,6 @@ import java.util.UUID;
 
 public interface ShoppingListRepository {
     Optional<ShoppingList> findById(UUID listId);
-    List<ShoppingList> findAllByMemberId(UUID userId);
+    List<ShoppingList> findAllByGroupId(UUID groupId);
     ShoppingList save(ShoppingList list);
 }

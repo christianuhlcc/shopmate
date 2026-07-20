@@ -4,20 +4,15 @@ import com.shopmate.domain.model.ItemChange;
 import com.shopmate.domain.model.ItemField;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
-import com.shopmate.domain.model.User;
 import com.shopmate.domain.port.in.ShoppingListUseCase;
-import com.shopmate.domain.port.out.UserRepository;
 import com.shopmate.generated.api.ItemsApi;
 import com.shopmate.generated.api.ListsApi;
-import com.shopmate.generated.api.MembersApi;
 import com.shopmate.generated.model.AddItemRequest;
-import com.shopmate.generated.model.AddMemberRequest;
 import com.shopmate.generated.model.CreateListRequest;
 import com.shopmate.generated.model.ItemChangeRequest;
 import com.shopmate.generated.model.LwwFieldBoolean;
 import com.shopmate.generated.model.LwwFieldString;
 import com.shopmate.generated.model.ShoppingListWithItems;
-import com.shopmate.generated.model.UserProfile;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -36,18 +31,15 @@ import java.util.UUID;
 // that base path in the interface mappings — it must be added at class level.
 @RestController
 @RequestMapping("/api")
-public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
+public class ShoppingListController implements ListsApi, ItemsApi {
 
     private final ShoppingListUseCase shoppingListUseCase;
     private final SecurityContextHelper securityContextHelper;
-    private final UserRepository userRepository;
 
     public ShoppingListController(ShoppingListUseCase shoppingListUseCase,
-                                   SecurityContextHelper securityContextHelper,
-                                   UserRepository userRepository) {
+                                   SecurityContextHelper securityContextHelper) {
         this.shoppingListUseCase = shoppingListUseCase;
         this.securityContextHelper = securityContextHelper;
-        this.userRepository = userRepository;
     }
 
     @Override
@@ -121,36 +113,18 @@ public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
         return ResponseEntity.noContent().build();
     }
 
-    @Override
-    public ResponseEntity<com.shopmate.generated.model.ShoppingList> addMember(
-            @PathVariable UUID listId,
-            @Valid @RequestBody AddMemberRequest addMemberRequest) {
-        UUID currentUserId = securityContextHelper.getCurrentUserId();
-        ShoppingList updated = shoppingListUseCase.addMember(listId, addMemberRequest.getEmail(), currentUserId);
-        return ResponseEntity.ok(toDto(updated));
-    }
-
-    @Override
-    public ResponseEntity<Void> removeMember(@PathVariable UUID listId, @PathVariable UUID userId) {
-        UUID currentUserId = securityContextHelper.getCurrentUserId();
-        shoppingListUseCase.removeMember(listId, userId, currentUserId);
-        return ResponseEntity.noContent().build();
-    }
-
     // --- Mapping helpers ---
 
     private com.shopmate.generated.model.ShoppingList toDto(ShoppingList list) {
-        List<UserProfile> memberProfiles = buildMemberProfiles(list);
         return new com.shopmate.generated.model.ShoppingList(
                 list.id(),
                 list.name(),
                 list.ownerId(),
-                memberProfiles,
+                list.groupId(),
                 OffsetDateTime.ofInstant(list.createdAt(), ZoneOffset.UTC));
     }
 
     private ShoppingListWithItems toDtoWithItems(ShoppingList list) {
-        List<UserProfile> memberProfiles = buildMemberProfiles(list);
         List<com.shopmate.generated.model.ShoppingItem> items = list.activeItems().stream()
                 .map(this::toItemDto)
                 .toList();
@@ -158,7 +132,7 @@ public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
                 list.id(),
                 list.name(),
                 list.ownerId(),
-                memberProfiles,
+                list.groupId(),
                 OffsetDateTime.ofInstant(list.createdAt(), ZoneOffset.UTC),
                 items);
     }
@@ -181,14 +155,6 @@ public class ShoppingListController implements ListsApi, ItemsApi, MembersApi {
 
     private LwwFieldBoolean toLwwBooleanDto(com.shopmate.domain.model.LwwField<Boolean> f) {
         return new LwwFieldBoolean(f.value(), f.timestamp(), f.modifiedBy());
-    }
-
-    private List<UserProfile> buildMemberProfiles(ShoppingList list) {
-        return list.memberIds().stream()
-                .map(memberId -> userRepository.findById(memberId)
-                        .map(u -> new UserProfile(u.id(), u.email(), u.displayName()).avatarUrl(u.avatarUrl()))
-                        .orElseGet(() -> new UserProfile(memberId, "", "")))
-                .toList();
     }
 
     private ItemField mapField(com.shopmate.generated.model.ItemField generated) {
