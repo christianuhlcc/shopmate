@@ -27,6 +27,9 @@ public class UserEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "group_id")
+    private UUID groupId;
+
     protected UserEntity() {}
 
     public UserEntity(UUID id, String email, String displayName, String avatarUrl, Instant createdAt) {
@@ -42,7 +45,9 @@ public class UserEntity {
     public String getDisplayName() { return displayName; }
     public String getAvatarUrl() { return avatarUrl; }
     public Instant getCreatedAt() { return createdAt; }
+    public UUID getGroupId() { return groupId; }
 
     public void setDisplayName(String displayName) { this.displayName = displayName; }
     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
+    public void setGroupId(UUID groupId) { this.groupId = groupId; }
 }

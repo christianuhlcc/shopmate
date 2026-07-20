@@ -36,18 +36,18 @@ public class UserRepositoryAdapter implements UserRepository {
             .orElseGet(() -> new UserEntity(user.id(), user.email(), user.displayName(), user.avatarUrl(), Instant.now()));
         entity.setDisplayName(user.displayName());
         entity.setAvatarUrl(user.avatarUrl());
+        entity.setGroupId(user.groupId());
         return toDomain(jpaRepository.save(entity));
     }
 
     @Override
     public List<User> findAllByGroupId(UUID groupId) {
-        // Stub: UserEntity has no group_id column yet (added in task A3, which also
-        // provides the real derived-query implementation).
-        throw new UnsupportedOperationException("findAllByGroupId not yet implemented — see task A3");
+        return jpaRepository.findAllByGroupId(groupId).stream()
+            .map(this::toDomain)
+            .toList();
     }
 
     User toDomain(UserEntity e) {
-        // TODO(A3): UserEntity has no group_id column yet; wire it through once it does.
-        return new User(e.getId(), e.getEmail(), e.getDisplayName(), e.getAvatarUrl(), null);
+        return new User(e.getId(), e.getEmail(), e.getDisplayName(), e.getAvatarUrl(), e.getGroupId());
     }
 }

@@ -31,6 +31,8 @@ shopmate:
     secret: ${JWT_SECRET:dev-secret-change-me-must-be-32-chars}
   frontend:
     base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  invites:
+    bootstrap-code: ${BOOTSTRAP_INVITE_CODE:}
 
 server:
   port: 8080
