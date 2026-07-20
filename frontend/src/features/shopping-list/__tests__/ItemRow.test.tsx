@@ -149,6 +149,72 @@ describe('ItemRow', () => {
     expect(screen.getByText('3')).toBeInTheDocument()
   })
 
+  it('shows the quantity chip with the default value of 1', () => {
+    renderRow(makeItem())
+    expect(screen.getByRole('button', { name: /change quantity, currently 1/i })).toBeInTheDocument()
+  })
+
+  it('clicking quantity enters edit mode', async () => {
+    const user = userEvent.setup()
+    const item = makeItem({ quantity: { value: '3', timestamp: 100, modifiedBy: USER_ID } })
+    renderRow(item)
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 3/i }))
+    expect(screen.getByRole('textbox')).toBeInTheDocument()
+  })
+
+  it('blurring quantity edit input calls updateItem with the new quantity', async () => {
+    const user = userEvent.setup()
+    const item = makeItem({ quantity: { value: '3', timestamp: 100, modifiedBy: USER_ID } })
+    const { updateItem } = renderRow(item)
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 3/i }))
+    const input = screen.getByRole('textbox')
+    await user.clear(input)
+    await user.type(input, '500 g')
+    await user.tab() // triggers blur
+    expect(updateItem).toHaveBeenCalledWith('item-1', 'QUANTITY', '500 g')
+  })
+
+  it('does not call updateItem when the quantity is unchanged', async () => {
+    const user = userEvent.setup()
+    const { updateItem } = renderRow(makeItem())
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 1/i }))
+    await user.tab() // blur without editing
+    expect(updateItem).not.toHaveBeenCalled()
+  })
+
+  it('escape cancels quantity editing without calling updateItem', async () => {
+    const user = userEvent.setup()
+    const { updateItem } = renderRow(makeItem())
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 1/i }))
+    const input = screen.getByRole('textbox')
+    await user.clear(input)
+    await user.type(input, '6')
+    await user.keyboard('{Escape}')
+    expect(updateItem).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /change quantity, currently 1/i })).toBeInTheDocument()
+  })
+
+  it('enter commits the quantity edit', async () => {
+    const user = userEvent.setup()
+    const { updateItem } = renderRow(makeItem())
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 1/i }))
+    const input = screen.getByRole('textbox')
+    await user.clear(input)
+    await user.type(input, '6{Enter}')
+    expect(updateItem).toHaveBeenCalledWith('item-1', 'QUANTITY', '6')
+  })
+
+  it('clearing the quantity commits it back to the default of 1', async () => {
+    const user = userEvent.setup()
+    const item = makeItem({ quantity: { value: '3', timestamp: 100, modifiedBy: USER_ID } })
+    const { updateItem } = renderRow(item)
+    await user.click(screen.getByRole('button', { name: /change quantity, currently 3/i }))
+    const input = screen.getByRole('textbox')
+    await user.clear(input)
+    await user.tab()
+    expect(updateItem).toHaveBeenCalledWith('item-1', 'QUANTITY', '1')
+  })
+
   it('shows a drag handle by default', () => {
     renderRow(makeItem())
     expect(screen.getByRole('button', { name: /reorder milk/i })).toBeInTheDocument()
