@@ -1,6 +1,6 @@
 # ADR-0012: Section classification via bundled dictionary + per-list learned corrections
 
-Date: 2026-07-19 · Status: Proposed
+Date: 2026-07-19 · Status: Accepted
 
 ## Context
 

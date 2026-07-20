@@ -33,7 +33,9 @@ infrastructure/
 
 Items use **LWW-Register per field** (Kleppmann 2020). Each mutable field carries `(value, timestamp, modifiedBy)`. On concurrent edits to the same field, the higher server-assigned timestamp wins; UUID tie-break for equal timestamps.
 
-**Fields:** `name`, `quantity`, `checked`, `deleted` (tombstone), `sortKey` (fractional index for ordering)
+**Fields:** `name`, `quantity`, `checked`, `deleted` (tombstone), `sortKey` (fractional index for ordering), `section` (supermarket section code)
+
+`section` is classified server-side at item creation via a bundled German dictionary + per-list learned corrections (ADR-0012); a user correction is an ordinary `SECTION` LWW change.
 
 **Move invariant (Kleppmann PaPoC '20 §2–3):**
 - Item reordering is always a `SORT_KEY` LWW update — **never delete+reinsert**.

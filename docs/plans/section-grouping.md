@@ -1,5 +1,11 @@
 # Implementation Plan: Auto-group items by supermarket section
 
+**Status:** All five phases completed 2026-07-19. Phase 5 (hardening) ran
+both coverage gates green and live two-user API convergence checks; it
+surfaced a pre-existing, general (not section-specific) concurrent-write
+lost-update bug (BUG-9, PLAN.md Open bugs) — documented, not fixed, per
+phase 5's scope.
+
 Decision record: [ADR-0012](../adr/0012-section-classification-dictionary-plus-learned-corrections.md).
 Read that first — this doc is the *how*, the ADR is the *what/why*.
 

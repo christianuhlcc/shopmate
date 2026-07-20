@@ -134,11 +134,17 @@ Each phase = one meaningful commit (per the commit convention).
    `docs/aws-deploy.md` → Observability), confirmed working in prod
    2026-07-19: both SSM parameters (`DASH0_AUTH_TOKEN`, `DASH0_ENDPOINT`)
    set, deploy green, telemetry flowing to Dash0.
-4. **Section grouping** (in progress, planned 2026-07-19): auto-group items
-   by supermarket section via bundled German dictionary + per-list learned
-   corrections (ADR-0012). Phased plan for subagents:
-   `docs/plans/section-grouping.md`. Phases 0 (BUG-8 fix) and 1 (taxonomy +
-   dictionary + classifier) landed 2026-07-19.
+4. ~~**Section grouping**~~ ✅ phases 0–5 complete 2026-07-19 — auto-group
+   items by supermarket section via bundled German dictionary + per-list
+   learned corrections (ADR-0012, now Accepted). Phased plan:
+   `docs/plans/section-grouping.md`. Backend + contract (phases 0–3) and
+   frontend grouped UI (phase 4) both landed and merged; phase 5 hardening
+   ran both coverage gates green and API-level two-user convergence checks.
+   Feature is code-complete and ready to deploy backend-first (old frontend
+   bundles ignore unknown `SECTION` SSE events harmlessly; old backend + new
+   frontend would 400 on `SECTION` PATCHes). **Before deploying, see BUG-9 in
+   Open bugs below** — phase 5 convergence testing surfaced a pre-existing,
+   general (not section-specific) lost-update race that phase 5 did not fix.
 5. **Open bugs** (pre-existing, not deploy-blocking): ~~BUG-8~~ **fixed
    2026-07-19** (Phase 0 of `docs/plans/section-grouping.md`) — Java
    `FractionalIndex` and TS `fractionalIndex.ts` were byte-for-byte identical
@@ -155,6 +161,52 @@ Each phase = one meaningful commit (per the commit convention).
    (Vitest), plus property tests in both suites. Minor: 405
    mapped to 500 by `ApiExceptionHandler`; `SseEventPublisher.send` only
    catches `IOException`.
+   - **BUG-9 (found 2026-07-19, phase 5 convergence testing, NOT FIXED —
+     pre-existing, deploy-relevant):** concurrent PATCHes to **different**
+     LWW fields of the same item can silently lose one of the two writes,
+     violating the "concurrent edits to different fields both survive"
+     guarantee (CLAUDE.md, PLAN.md CRDT model). Root cause:
+     `ShoppingListRepositoryAdapter.save()` does read (`findById`) → in-memory
+     field-by-field timestamp-gated merge → `save()`, but the JPA entity has
+     no `@DynamicUpdate`, so Hibernate's flush issues a full-column `UPDATE`
+     using *every* field currently held in that entity instance — including
+     fields the request never touched, carrying whatever (possibly stale,
+     pre-dating a concurrent commit) value was read at the top of that
+     transaction. Whichever of two truly-concurrent requests commits last
+     wins outright and clobbers the other's already-committed, unrelated
+     field back to its own stale snapshot. Confirmed via live two-user API
+     testing (concurrent `SECTION` + `SORT_KEY` PATCH on the same item, 3/3
+     trials lost one field), and confirmed **not** section-specific —
+     concurrent `CHECKED` + `QUANTITY` PATCH on the same item reproduces it
+     identically (3/3 trials). Pre-dates section-grouping; the new `section`
+     field just inherits the existing flaw in `mergeLwwFields`. Earlier
+     end-to-end convergence verification (phase 7) only exercised concurrent
+     *adds* by two users, not concurrent edits to different fields of an
+     *existing* shared item, so this was never previously exercised.
+     Same-field conflicts (e.g. two `SECTION` PATCHes to the same field) are
+     not subject to data loss this way (the field being compared is the one
+     being written) but the "last commit wins" mechanics mean the documented
+     UUID tie-break in `LwwField.merge()` is not actually what decides ties
+     under true concurrency at the persistence layer — wall-clock commit
+     order does. Needs a deliberate fix (e.g. `@DynamicUpdate`, per-field
+     `UPDATE` statements, optimistic locking with retry, or row-level
+     locking) plus dedicated concurrency tests before relying on it net-new;
+     not fixed as part of section-grouping phase 5 per explicit scope
+     (verify + document, not fix).
+   - **BUG-10 (found 2026-07-19, phase 5 convergence testing, NOT FIXED):**
+     `SectionCorrectionRepositoryAdapter.upsert()` does a non-atomic
+     check-then-insert (`findById` → `if empty, insert`) rather than a real
+     SQL upsert. Two concurrent `SECTION` PATCHes that normalize to the same
+     `(list_id, normalized_name)` both see "no existing row," both attempt
+     `INSERT`, and the second hits the `section_corrections_pkey` unique
+     constraint. The `ConstraintViolationException` is uncaught and surfaces
+     as an opaque `500 INTERNAL_ERROR` to that client — misleadingly, since
+     by that point the item's own `SECTION` field mutation had already
+     committed successfully in the earlier, separate `save()` call, so the
+     "failing" client's edit silently succeeded despite the error response.
+     Same root-cause family as BUG-9 (non-atomic read-then-write under
+     concurrency); needs a real `INSERT ... ON CONFLICT DO UPDATE` (or
+     equivalent) plus exception handling.
 
 ## Key invariants to never break
 - Reorder = `SORT_KEY` LWW update, never delete+reinsert.
