@@ -161,13 +161,23 @@ export function ItemRow({
         type="button"
         onClick={() => setSheetOpen(true)}
         aria-label={`Change section, currently ${section.label}`}
-        className={`pressable flex-shrink-0 max-w-[6rem] truncate min-h-touch px-2.5 py-1 rounded-full border text-label font-semibold ${
+        title={section.label}
+        className={`pressable flex-shrink-0 min-h-touch min-w-touch flex items-center justify-center rounded-full border ${
           isChecked
             ? 'border-line text-ink-mute'
             : 'border-line text-ink-soft hover:border-marigold-deep/50'
         }`}
       >
-        {section.label}
+        <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M8.6 2H3.6a1 1 0 0 0-.7.3L2 3.2a1 1 0 0 0 0 1.4l7.4 7.4a1 1 0 0 0 1.4 0l3.2-3.2a1 1 0 0 0 0-1.4L9.3 2.3A1 1 0 0 0 8.6 2Z"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <circle cx="5.5" cy="5.5" r="0.9" fill="currentColor" />
+        </svg>
       </button>
 
       {/* Quantity */}
