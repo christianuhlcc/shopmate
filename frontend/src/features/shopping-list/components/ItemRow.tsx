@@ -162,10 +162,8 @@ export function ItemRow({
         onClick={() => setSheetOpen(true)}
         aria-label={`Change section, currently ${section.label}`}
         title={section.label}
-        className={`pressable flex-shrink-0 min-h-touch min-w-touch flex items-center justify-center rounded-full border ${
-          isChecked
-            ? 'border-line text-ink-mute'
-            : 'border-line text-ink-soft hover:border-marigold-deep/50'
+        className={`pressable flex-shrink-0 min-h-touch min-w-touch flex items-center justify-center rounded-full ${
+          isChecked ? 'text-ink-mute' : 'text-ink-soft hover:text-marigold-deep'
         }`}
       >
         <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
