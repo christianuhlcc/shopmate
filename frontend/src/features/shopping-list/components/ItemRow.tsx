@@ -25,8 +25,11 @@ export function ItemRow({
 }: ItemRowProps) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(item.name.value)
+  const [editingQuantity, setEditingQuantity] = useState(false)
+  const [quantityEditValue, setQuantityEditValue] = useState(item.quantity.value)
   const [sheetOpen, setSheetOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const quantityInputRef = useRef<HTMLInputElement>(null)
   const isChecked = item.checked.value
 
   // Harmless when rendered outside a DndContext/SortableContext (the checked
@@ -61,6 +64,32 @@ export function ItemRow({
     } else if (e.key === 'Escape') {
       setEditing(false)
       setEditValue(item.name.value)
+    }
+  }
+
+  function handleQuantityClick() {
+    setQuantityEditValue(item.quantity.value)
+    setEditingQuantity(true)
+    setTimeout(() => {
+      quantityInputRef.current?.focus()
+      quantityInputRef.current?.select()
+    }, 0)
+  }
+
+  function commitQuantityEdit() {
+    setEditingQuantity(false)
+    const trimmed = quantityEditValue.trim() || '1'
+    if (trimmed !== item.quantity.value) {
+      updateItem(item.id, 'QUANTITY', trimmed)
+    }
+  }
+
+  function handleQuantityKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      commitQuantityEdit()
+    } else if (e.key === 'Escape') {
+      setEditingQuantity(false)
+      setQuantityEditValue(item.quantity.value)
     }
   }
 
@@ -178,17 +207,31 @@ export function ItemRow({
         </svg>
       </button>
 
-      {/* Quantity */}
-      {item.quantity.value && item.quantity.value !== '1' && (
-        <span
-          className={`flex-shrink-0 text-label font-semibold px-2.5 py-0.5 rounded-full ${
+      {/* Quantity — tappable chip, always visible so a default quantity can be set */}
+      {editingQuantity ? (
+        <input
+          ref={quantityInputRef}
+          type="text"
+          value={quantityEditValue}
+          onChange={(e) => setQuantityEditValue(e.target.value)}
+          onBlur={commitQuantityEdit}
+          onKeyDown={handleQuantityKeyDown}
+          className="flex-shrink-0 w-14 text-label font-semibold text-center px-2 py-0.5 rounded-full border-2 border-marigold-deep outline-none bg-transparent text-ink"
+          maxLength={20}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={handleQuantityClick}
+          aria-label={`Change quantity, currently ${item.quantity.value || '1'}`}
+          className={`pressable flex-shrink-0 text-label font-semibold px-2.5 py-0.5 rounded-full ${
             isChecked
               ? 'text-ink-mute bg-ground'
-              : 'text-honey-deep bg-marigold-faint'
+              : 'text-honey-deep bg-marigold-faint hover:bg-marigold-tint'
           }`}
         >
-          {item.quantity.value}
-        </span>
+          {item.quantity.value || '1'}
+        </button>
       )}
 
       {/* Delete — 44px hit area */}
