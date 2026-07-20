@@ -27,6 +27,7 @@ function renderCallback(search: string) {
     login: vi.fn(),
     logout: vi.fn(),
     setToken,
+    refreshUser: vi.fn(),
   })
 
   render(

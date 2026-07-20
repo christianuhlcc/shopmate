@@ -6,9 +6,11 @@ ShopMate follows **Hexagonal Architecture** (Ports & Adapters) and **Clean Archi
 
 ```
 domain/          ← pure Java, zero framework imports
-  model/         ← immutable records: ShoppingList, ShoppingItem, LwwField, ItemChange
-  port/in/       ← inbound ports (interfaces): ShoppingListUseCase
-  port/out/      ← outbound ports (interfaces): ShoppingListRepository, UserRepository, EventPublisher
+  model/         ← immutable records: ShoppingList, ShoppingItem, LwwField, ItemChange,
+                   Group, InviteCode
+  port/in/       ← inbound ports (interfaces): ShoppingListUseCase, GroupUseCase, InviteUseCase
+  port/out/      ← outbound ports (interfaces): ShoppingListRepository, UserRepository,
+                   GroupRepository, InviteCodeRepository, EventPublisher
   crdt/          ← CRDT utilities: FractionalIndex
 
 application/
@@ -43,6 +45,21 @@ Items use **LWW-Register per field** (Kleppmann 2020). Each mutable field carrie
 
 **Timestamps are always server-assigned.** The client never supplies a timestamp. The REST adapter stamps `System.currentTimeMillis()` at the point of receipt before constructing `ItemChange`.
 
+## Tenancy
+
+Every user belongs to **exactly one group**, and every list belongs to a group
+(ADR-0013). Group membership *is* list access — there is no per-list sharing.
+Any member of a group can read and mutate every list in it; `owner_id` is kept
+for display only.
+
+- `ShoppingListService` resolves the caller's group before every operation.
+  A group-less user gets `NoGroupException` → `403 NO_GROUP`.
+- Membership is read from the DB per request, never from a JWT claim — a claim
+  goes stale the moment a fresh user redeems an invite, and JWTs live 24 h.
+- `GoogleOAuth2SuccessHandler` rebuilds the `User` record on every login, so it
+  must preserve `groupId`. Dropping it silently ejects returning users from
+  their group.
+
 ## OpenAPI Contract
 
 `api/openapi.yaml` is the single source of truth. **Never manually edit generated code.**
@@ -66,8 +83,9 @@ cd frontend && npm run dev
 
 # Visual preview without a backend (mock data, all screen states):
 #   npm run dev, then open http://localhost:3000/preview.html?screen=<state>
-#   states: login | lists | lists-empty | lists-loading | list | list-empty
-#           | list-loading | list-error | callback-error   (+ &sheet=create|share)
+#   states: login | welcome | welcome-name | lists | lists-empty | lists-loading
+#           | list | list-empty | list-loading | list-error | callback-error
+#           (+ &sheet=create|group)
 
 # Backend tests
 cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew test
@@ -115,8 +133,11 @@ nothing. Details: `docs/aws-deploy.md`.
 ## Security Notes
 
 - JWTs are never placed in URLs. The OAuth2 callback issues a short-lived single-use auth code; the frontend exchanges it for a JWT via `POST /api/auth/exchange`.
-- SSE auth uses a separate short-lived JWT scoped to `(userId, listId)`, 15-min TTL, passed as `?token=` query param (EventSource cannot set headers).
+- SSE auth uses a separate short-lived JWT scoped to `(userId, listId)`, 15-min TTL, passed as `?token=` query param (EventSource cannot set headers). Token issuance asserts the caller's group has access to the list, and `subscribe` rejects a token whose `listId` claim doesn't match the path — **both checks are required**; either one alone leaves the stream reachable across groups.
+- Signup is gated by invite codes (ADR-0013). Google login stays open, but a user with no group can do nothing: every list operation returns `403` with code `NO_GROUP`, which is deliberately distinct from `ACCESS_FORBIDDEN` so the frontend can route to onboarding. Any new endpoint must decide what it does for a group-less caller.
+- Invite codes are single-use and expire after 7 days. Single-use is enforced by a conditional `UPDATE ... WHERE used_by IS NULL`, not read-then-write, so concurrent redemption can't double-spend a code.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET` come from environment variables only. Never commit secrets.
+- `BOOTSTRAP_INVITE_CODE` is a reusable NEW_GROUP code for bootstrapping a fresh environment. While set it is a standing credential — **unset it once the first group exists**.
 - Copy `.env.example` to `.env` and fill in real values for local development.
 
 ## Design Context

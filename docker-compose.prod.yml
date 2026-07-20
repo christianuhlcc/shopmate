@@ -6,6 +6,10 @@
 # .env (rendered by deploy/aws/deploy-on-instance.sh from SSM Parameter Store)
 # provides: DOMAIN, ECR_REGISTRY, IMAGE_TAG, DB_PASSWORD, GOOGLE_*, JWT_SECRET,
 # DASH0_ENDPOINT, DASH0_AUTH_TOKEN.
+#
+# BOOTSTRAP_INVITE_CODE is inherited from the base compose file and defaults to
+# empty (disabled). Prod already has a group via the V4 backfill, so it should
+# stay unset here — while set, any signed-in user can create a group.
 
 services:
   postgres:

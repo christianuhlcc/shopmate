@@ -25,6 +25,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       setToken: vi.fn(),
+      refreshUser: vi.fn(),
     })
 
     render(
@@ -55,6 +56,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       setToken: vi.fn(),
+      refreshUser: vi.fn(),
     })
 
     render(
@@ -85,6 +87,7 @@ describe('ProtectedRoute', () => {
       login: vi.fn(),
       logout: vi.fn(),
       setToken: vi.fn(),
+      refreshUser: vi.fn(),
     })
 
     render(

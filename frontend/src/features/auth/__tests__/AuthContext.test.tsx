@@ -16,17 +16,20 @@ const PROFILE = {
   id: 'u1',
   email: 'alice@example.com',
   displayName: 'Alice',
+  group: { id: 'g1', name: 'The Household' },
 }
 
 function Consumer() {
-  const { token, user, isLoading, logout, setToken } = useAuth()
+  const { token, user, isLoading, logout, setToken, refreshUser } = useAuth()
   return (
     <div>
       <div data-testid="loading">{String(isLoading)}</div>
       <div data-testid="token">{token ?? 'none'}</div>
       <div data-testid="user">{user?.email ?? 'none'}</div>
+      <div data-testid="group">{user?.group?.name ?? 'none'}</div>
       <button onClick={logout}>logout</button>
       <button onClick={() => void setToken('fresh-jwt')}>set-token</button>
+      <button onClick={() => void refreshUser()}>refresh-user</button>
     </div>
   )
 }
@@ -106,6 +109,23 @@ describe('AuthProvider', () => {
     await user.click(screen.getByRole('button', { name: 'logout' }))
     expect(localStorage.getItem('auth_token')).toBeNull()
     expect(screen.getByText('Login page')).toBeInTheDocument()
+  })
+
+  it('exposes the group from the profile', async () => {
+    localStorage.setItem('auth_token', 'stored-jwt')
+    renderWithProvider()
+    await waitFor(() => expect(screen.getByTestId('group')).toHaveTextContent('The Household'))
+  })
+
+  it('refreshUser re-fetches the profile and updates state', async () => {
+    const user = userEvent.setup()
+    renderWithProvider()
+    mockedApi.GET.mockResolvedValue({
+      data: { ...PROFILE, group: { id: 'g2', name: 'New Group' } },
+      error: undefined,
+    })
+    await user.click(screen.getByRole('button', { name: 'refresh-user' }))
+    await waitFor(() => expect(screen.getByTestId('group')).toHaveTextContent('New Group'))
   })
 })
 

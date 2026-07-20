@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../../api/client'
+import { GroupSheet } from '../../group/GroupSheet'
 
 interface ShoppingList {
   id: string
   name: string
   ownerId: string
-  members: { id: string; email: string; displayName: string; avatarUrl?: string | null }[]
+  groupId: string
   createdAt: string
 }
 
@@ -17,6 +18,7 @@ export function ListsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newListName, setNewListName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [showGroup, setShowGroup] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -63,12 +65,36 @@ export function ListsPage() {
       <header className="bg-marigold sticky top-0 z-header">
         <div className="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
           <h1 className="text-title font-bold text-ink tracking-tight">ShopMate</h1>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="pressable min-h-touch px-5 py-2 bg-ink text-panel rounded-full text-body font-semibold hover:bg-ink/90 focus-visible:outline-ink"
-          >
-            New list
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowGroup(true)}
+              aria-label="Your group"
+              className="pressable min-h-touch min-w-touch rounded-full flex items-center justify-center text-ink hover:bg-marigold-deep/25 focus-visible:outline-ink"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <circle cx="7" cy="6.5" r="2.75" stroke="currentColor" strokeWidth="1.6" />
+                <path
+                  d="M2 16c0-2.9 2.24-5 5-5s5 2.1 5 5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <circle cx="14.5" cy="7.5" r="2.1" stroke="currentColor" strokeWidth="1.6" />
+                <path
+                  d="M12.5 11c2.35.2 4 2.1 4 4.6"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="pressable min-h-touch px-5 py-2 bg-ink text-panel rounded-full text-body font-semibold hover:bg-ink/90 focus-visible:outline-ink"
+            >
+              New list
+            </button>
+          </div>
         </div>
       </header>
 
@@ -120,12 +146,6 @@ export function ListsPage() {
                 <span className="flex-1 min-w-0">
                   <span className="block text-item font-semibold text-ink truncate">
                     {list.name}
-                  </span>
-                  <span className="mt-1 flex items-center gap-2">
-                    <MemberDots members={list.members} />
-                    <span className="text-label text-ink-soft">
-                      {list.members.length} member{list.members.length !== 1 ? 's' : ''}
-                    </span>
                   </span>
                 </span>
                 <svg
@@ -194,23 +214,9 @@ export function ListsPage() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-function MemberDots({ members }: { members: ShoppingList['members'] }) {
-  const shown = members.slice(0, 3)
-  return (
-    <span aria-hidden="true" className="flex -space-x-1.5">
-      {shown.map((m) => (
-        <span
-          key={m.id}
-          className="h-5 w-5 rounded-full bg-marigold-tint border border-panel flex items-center justify-center text-[0.625rem] font-bold text-honey-deep uppercase"
-        >
-          {(m.displayName || m.email).charAt(0)}
-        </span>
-      ))}
-    </span>
+      {showGroup && <GroupSheet onClose={() => setShowGroup(false)} />}
+    </div>
   )
 }
 

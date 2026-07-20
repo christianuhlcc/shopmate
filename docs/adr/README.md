@@ -18,3 +18,4 @@ decision date.
 | [0010](0010-prod-single-ec2-terraform-oidc-ssm.md) | Prod on a single EC2 via Terraform; CD with GitHub OIDC + SSM | 2026-07-12 |
 | [0011](0011-observability-otel-collector-dash0.md) | Observability via an OTel Collector sidecar to Dash0, prod only | 2026-07-18 |
 | [0012](0012-section-classification-dictionary-plus-learned-corrections.md) | Section classification via bundled dictionary + learned corrections | 2026-07-19 |
+| [0013](0013-group-tenancy-invite-codes.md) | Group tenancy with single-use invite codes | 2026-07-20 |

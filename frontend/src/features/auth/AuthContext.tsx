@@ -13,6 +13,7 @@ interface UserProfile {
   email: string
   displayName: string
   avatarUrl?: string | null
+  group?: { id: string; name: string } | null
 }
 
 interface AuthContextValue {
@@ -22,6 +23,7 @@ interface AuthContextValue {
   login: () => void
   logout: () => void
   setToken: (token: string) => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -86,8 +88,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    const { data } = await apiClient.GET('/users/me')
+    if (data) {
+      setUser(data)
+    }
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ token, user, isLoading, login, logout, setToken }}>
+    <AuthContext.Provider
+      value={{ token, user, isLoading, login, logout, setToken, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   )

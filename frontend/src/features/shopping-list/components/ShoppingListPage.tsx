@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { apiClient } from '../../../api/client'
 import { useShoppingList } from '../hooks/useShoppingList'
 import { AddItemForm } from './AddItemForm'
 import { ItemList } from './ItemList'
@@ -19,38 +17,6 @@ export function ShoppingListPage() {
     setSection,
     moveItemTo,
   } = useShoppingList(listId!)
-
-  const [shareEmail, setShareEmail] = useState('')
-  const [showShare, setShowShare] = useState(false)
-  const [sharing, setSharing] = useState(false)
-  const [shareError, setShareError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!showShare) return
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowShare(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showShare])
-
-  async function handleShare(e: React.FormEvent) {
-    e.preventDefault()
-    if (!shareEmail.trim()) return
-    setSharing(true)
-    setShareError(null)
-    const { error: apiError } = await apiClient.POST('/lists/{listId}/members', {
-      params: { path: { listId: listId! } },
-      body: { email: shareEmail.trim() },
-    })
-    setSharing(false)
-    if (apiError) {
-      setShareError('Could not share list. Check the email address.')
-    } else {
-      setShareEmail('')
-      setShowShare(false)
-    }
-  }
 
   if (isLoading) {
     return (
@@ -123,12 +89,6 @@ export function ShoppingListPage() {
             </svg>
           </Link>
           <h1 className="flex-1 text-title font-bold text-ink truncate">{listName}</h1>
-          <button
-            onClick={() => setShowShare(true)}
-            className="pressable flex-shrink-0 min-h-touch px-5 py-2 bg-ink text-panel rounded-full text-body font-semibold hover:bg-ink/90 focus-visible:outline-ink mr-2"
-          >
-            Share
-          </button>
         </div>
       </header>
 
@@ -144,58 +104,6 @@ export function ShoppingListPage() {
       </main>
 
       <AddItemForm addItem={addItem} />
-
-      {showShare && (
-        <div
-          className="sheet-backdrop fixed inset-0 bg-ink/40 flex items-end sm:items-center justify-center z-overlay px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowShare(false)
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="share-list-title"
-            className="sheet-panel bg-panel rounded-2xl shadow-xl p-6 w-full max-w-sm z-sheet"
-          >
-            <h2 id="share-list-title" className="text-title font-semibold text-ink mb-1">
-              Share list
-            </h2>
-            <p className="text-label text-ink-soft mb-4">
-              They'll see every change the moment it happens.
-            </p>
-            <form onSubmit={handleShare}>
-              <input
-                type="email"
-                value={shareEmail}
-                onChange={(e) => setShareEmail(e.target.value)}
-                placeholder="Email address"
-                className="w-full border border-line rounded-xl px-4 py-3 text-body text-ink placeholder:text-ink-mute mb-4 focus:outline-none focus:ring-2 focus:ring-marigold-deep"
-                autoFocus
-              />
-              {shareError && (
-                <p className="text-danger text-label mb-3">{shareError}</p>
-              )}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setShowShare(false); setShareEmail(''); setShareError(null) }}
-                  className="pressable flex-1 min-h-touch px-4 py-2.5 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={sharing || !shareEmail.trim()}
-                  className="pressable flex-1 min-h-touch px-4 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50 disabled:hover:bg-marigold"
-                >
-                  {sharing ? 'Sharing…' : 'Share'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

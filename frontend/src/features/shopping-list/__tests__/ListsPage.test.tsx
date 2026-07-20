@@ -15,16 +15,12 @@ const mockedApi = vi.mocked(apiClient) as unknown as {
   POST: ReturnType<typeof vi.fn>
 }
 
-function makeList(id: string, name: string, memberCount = 1) {
+function makeList(id: string, name: string) {
   return {
     id,
     name,
     ownerId: 'owner-1',
-    members: Array.from({ length: memberCount }, (_, i) => ({
-      id: `u${i}`,
-      email: `u${i}@example.com`,
-      displayName: `User ${i}`,
-    })),
+    groupId: 'group-1',
     createdAt: '2026-01-01T00:00:00Z',
   }
 }
@@ -42,21 +38,14 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedApi.GET.mockResolvedValue({ data: [makeList('l1', 'Groceries', 2)], error: undefined })
+  mockedApi.GET.mockResolvedValue({ data: [makeList('l1', 'Groceries')], error: undefined })
   mockedApi.POST.mockResolvedValue({ data: makeList('l2', 'Hardware'), error: undefined })
 })
 
 describe('ListsPage', () => {
-  it('renders lists with member counts after loading', async () => {
+  it('renders lists after loading', async () => {
     renderPage()
     expect(await screen.findByText('Groceries')).toBeInTheDocument()
-    expect(screen.getByText('2 members')).toBeInTheDocument()
-  })
-
-  it('renders singular member label', async () => {
-    mockedApi.GET.mockResolvedValue({ data: [makeList('l1', 'Solo', 1)], error: undefined })
-    renderPage()
-    expect(await screen.findByText('1 member')).toBeInTheDocument()
   })
 
   it('shows empty state when there are no lists', async () => {
@@ -109,6 +98,25 @@ describe('ListsPage', () => {
     await user.click(screen.getByRole('button', { name: /cancel/i }))
     expect(screen.queryByPlaceholderText(/list name/i)).not.toBeInTheDocument()
     expect(mockedApi.POST).not.toHaveBeenCalled()
+  })
+
+  it('opens the group sheet from the header', async () => {
+    mockedApi.GET.mockImplementation((url: string) => {
+      if (url === '/groups/me') {
+        return Promise.resolve({
+          data: { id: 'g1', name: 'The Millers', createdAt: '2026-01-01T00:00:00Z', members: [] },
+          error: undefined,
+        })
+      }
+      return Promise.resolve({ data: [makeList('l1', 'Groceries')], error: undefined })
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Groceries')
+
+    await user.click(screen.getByRole('button', { name: /your group/i }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(await screen.findByText('The Millers')).toBeInTheDocument()
   })
 
   it('does not create a list when creation fails', async () => {

@@ -55,6 +55,9 @@ possible future extension writing into the same corrections store.
   upsert on concurrent corrections. There is no household entity; the shared
   list is the closest proxy — membership already gates authorization, and
   corrections cannot leak between unrelated lists.
+  *(Superseded by ADR-0013: a household entity now exists as the group. The
+  learned map stays per-list, which is now a deliberate narrowing rather than
+  a missing concept.)*
 - **Taxonomy:** 14 codes in default walk order, `SONSTIGES` as fallback,
   always last. Stored as strings, not DB enums, so taxonomy evolution is a
   code change; unknown codes render as `SONSTIGES`.

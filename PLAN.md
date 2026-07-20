@@ -145,7 +145,19 @@ Each phase = one meaningful commit (per the commit convention).
    frontend would 400 on `SECTION` PATCHes). **Before deploying, see BUG-9 in
    Open bugs below** — phase 5 convergence testing surfaced a pre-existing,
    general (not section-specific) lost-update race that phase 5 did not fix.
-5. **Open bugs** (pre-existing, not deploy-blocking): ~~BUG-8~~ **fixed
+5. **Group tenancy (multi-tenancy)** — in progress 2026-07-20. Users belong to
+   exactly one group; all lists belong to a group and every member sees them
+   all; signup is gated by single-use invite codes (`JOIN_GROUP` /
+   `NEW_GROUP`). Replaces per-list email sharing, which is **removed**
+   (`list_members` dropped in V5 — one-way). ADR-0013. Phased plan:
+   `docs/plans/group-tenancy.md`. Backend phases A–B landed (`66c4a1b`,
+   `6e444f7`, `2316d43`); frontend phase C in progress.
+   Folded in: a **pre-existing SSE authorization hole** — token issuance never
+   checked access to the requested `listId`, and `subscribe` never compared the
+   token's `listId` claim to the path, so any authenticated user could stream
+   another household's list live. Both halves fixed in phase B.
+   Deploy note: breaking API change, frontend and backend must ship together.
+6. **Open bugs** (pre-existing, not deploy-blocking): ~~BUG-8~~ **fixed
    2026-07-19** (Phase 0 of `docs/plans/section-grouping.md`) — Java
    `FractionalIndex` and TS `fractionalIndex.ts` were byte-for-byte identical
    mirrors of the same padding-based algorithm, which broke the

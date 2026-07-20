@@ -5,9 +5,10 @@
  * with realistic in-memory data so every screen state can be rendered (and
  * screenshotted) without a backend.
  *
- *   /preview.html?screen=login | lists | lists-empty | lists-loading
- *                | list | list-empty | list-loading | list-error | callback-error
- *   &sheet=create | share   — auto-opens the corresponding dialog
+ *   /preview.html?screen=login | welcome | welcome-name | lists | lists-empty
+ *                | lists-loading | list | list-empty | list-loading | list-error
+ *                | callback-error
+ *   &sheet=create | group   — auto-opens the corresponding dialog
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -18,11 +19,20 @@ const params = new URLSearchParams(window.location.search)
 const screen = params.get('screen') ?? 'list'
 const sheet = params.get('sheet')
 
-const USER = { id: 'u1', email: 'alice@example.com', displayName: 'Alice' }
+const GROUP = { id: 'g1', name: 'The Sandbergs' }
+// The welcome screens are exactly the group-less state, so the profile must
+// come back without a group there — that is what RequireGroup keys off.
+const HAS_GROUP = screen !== 'welcome' && screen !== 'welcome-name'
+const USER = {
+  id: 'u1',
+  email: 'alice@example.com',
+  displayName: 'Alice',
+  group: HAS_GROUP ? GROUP : null,
+}
 const MEMBERS = [
   USER,
-  { id: 'u2', email: 'ben@example.com', displayName: 'Ben' },
-  { id: 'u3', email: 'cara@example.com', displayName: 'Cara' },
+  { id: 'u2', email: 'ben@example.com', displayName: 'Ben', group: GROUP },
+  { id: 'u3', email: 'cara@example.com', displayName: 'Cara', group: GROUP },
 ]
 
 function lww<T>(value: T) {
@@ -69,9 +79,9 @@ const LISTS =
   screen === 'lists-empty'
     ? []
     : [
-        { id: 'l1', name: 'Groceries', ownerId: 'u1', members: MEMBERS, createdAt: '2026-07-01T10:00:00Z' },
-        { id: 'l2', name: 'Weekend BBQ', ownerId: 'u2', members: MEMBERS.slice(0, 2), createdAt: '2026-07-10T10:00:00Z' },
-        { id: 'l3', name: 'Hardware store', ownerId: 'u1', members: [USER], createdAt: '2026-07-15T10:00:00Z' },
+        { id: 'l1', name: 'Groceries', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-01T10:00:00Z' },
+        { id: 'l2', name: 'Weekend BBQ', ownerId: 'u2', groupId: GROUP.id, createdAt: '2026-07-10T10:00:00Z' },
+        { id: 'l3', name: 'Hardware store', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-15T10:00:00Z' },
       ]
 
 const NEVER = new Promise<Response>(() => {})
@@ -91,6 +101,33 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
 
   if (path === '/api/users/me') return json(USER)
+  if (path === '/api/groups/me') {
+    return json({ ...GROUP, createdAt: '2026-06-01T10:00:00Z', members: MEMBERS })
+  }
+  if (path === '/api/invites' && method === 'POST') {
+    const type = JSON.parse((init?.body as string) ?? '{}').type ?? 'JOIN_GROUP'
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ code: 'K7M2QRXP', type, expiresAt: '2026-07-27T10:00:00Z' }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+  }
+  if (path === '/api/invites/redeem' && method === 'POST') {
+    // welcome-name previews the second step: the backend answers the bare code
+    // with GROUP_NAME_REQUIRED (without consuming it) so the UI reveals the
+    // "name your household" field.
+    const body = JSON.parse((init?.body as string) ?? '{}')
+    if (screen === 'welcome-name' && !body.groupName) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ code: 'GROUP_NAME_REQUIRED', message: 'Group name required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    }
+    return json({ ...USER, group: GROUP })
+  }
   if (path === '/api/lists' && method === 'GET') {
     if (screen === 'lists-loading') return NEVER
     return json(LISTS)
@@ -99,7 +136,7 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   if (/^\/api\/lists\/[^/]+$/.test(path) && method === 'GET') {
     if (screen === 'list-loading') return NEVER
     if (screen === 'list-error') return Promise.resolve(new Response('nope', { status: 403 }))
-    return json({ id: 'l1', name: 'Groceries', ownerId: 'u1', members: MEMBERS, items: ITEMS })
+    return json({ id: 'l1', name: 'Groceries', ownerId: 'u1', groupId: GROUP.id, items: ITEMS })
   }
   // Mutations: echo something plausible so optimistic flows settle quietly
   return json(ITEMS[0] ?? {})
@@ -124,9 +161,11 @@ const route =
     ? '/login'
     : screen === 'callback-error'
       ? '/auth/callback'
-      : screen.startsWith('lists')
-        ? '/lists'
-        : '/lists/l1'
+      : screen.startsWith('welcome')
+        ? '/welcome'
+        : screen.startsWith('lists')
+          ? '/lists'
+          : '/lists/l1'
 
 async function mount() {
   // Imported dynamically so the fetch/EventSource stubs above are installed
@@ -135,6 +174,8 @@ async function mount() {
   const { LoginPage } = await import('../features/auth/LoginPage')
   const { AuthCallback } = await import('../features/auth/AuthCallback')
   const { ProtectedRoute } = await import('../features/auth/ProtectedRoute')
+  const { RequireGroup } = await import('../features/auth/RequireGroup')
+  const { OnboardingPage } = await import('../features/onboarding/OnboardingPage')
   const { ListsPage } = await import('../features/shopping-list/components/ListsPage')
   const { ShoppingListPage } = await import('../features/shopping-list/components/ShoppingListPage')
 
@@ -143,12 +184,20 @@ async function mount() {
       { path: '/login', element: <AuthProvider><LoginPage /></AuthProvider> },
       { path: '/auth/callback', element: <AuthProvider><AuthCallback /></AuthProvider> },
       {
+        path: '/welcome',
+        element: <AuthProvider><ProtectedRoute><OnboardingPage /></ProtectedRoute></AuthProvider>,
+      },
+      {
         path: '/lists',
-        element: <AuthProvider><ProtectedRoute><ListsPage /></ProtectedRoute></AuthProvider>,
+        element: (
+          <AuthProvider><ProtectedRoute><RequireGroup><ListsPage /></RequireGroup></ProtectedRoute></AuthProvider>
+        ),
       },
       {
         path: '/lists/:listId',
-        element: <AuthProvider><ProtectedRoute><ShoppingListPage /></ProtectedRoute></AuthProvider>,
+        element: (
+          <AuthProvider><ProtectedRoute><RequireGroup><ShoppingListPage /></RequireGroup></ProtectedRoute></AuthProvider>
+        ),
       },
     ],
     { initialEntries: [route] },
@@ -162,11 +211,31 @@ async function mount() {
 
   if (sheet) {
     setTimeout(() => {
-      const label = sheet === 'create' ? /new list/i : /^share$/i
-      const btn = Array.from(document.querySelectorAll('button')).find((b) =>
-        label.test(b.textContent ?? ''),
+      const label = sheet === 'create' ? /new list/i : /your group/i
+      // The group trigger is an icon button carrying only an aria-label.
+      const btn = Array.from(document.querySelectorAll('button')).find(
+        (b) => label.test(b.textContent ?? '') || label.test(b.getAttribute('aria-label') ?? ''),
       )
       btn?.click()
+    }, 400)
+  }
+
+  // welcome-name shows the second onboarding step, which is only reachable by
+  // submitting a code and getting GROUP_NAME_REQUIRED back. Drive that here so
+  // the screen is directly linkable.
+  if (screen === 'welcome-name') {
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('#invite-code')
+      if (!input) return
+      const setValue = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set
+      setValue?.call(input, 'K7M2QRXP')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      setTimeout(() => {
+        document.querySelector<HTMLFormElement>('form')?.requestSubmit()
+      }, 50)
     }, 400)
   }
 }
