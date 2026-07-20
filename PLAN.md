@@ -145,13 +145,19 @@ Each phase = one meaningful commit (per the commit convention).
    frontend would 400 on `SECTION` PATCHes). **Before deploying, see BUG-9 in
    Open bugs below** — phase 5 convergence testing surfaced a pre-existing,
    general (not section-specific) lost-update race that phase 5 did not fix.
-5. **Group tenancy (multi-tenancy)** — in progress 2026-07-20. Users belong to
+5. **Group tenancy (multi-tenancy)** ✅ complete 2026-07-20. Users belong to
    exactly one group; all lists belong to a group and every member sees them
    all; signup is gated by single-use invite codes (`JOIN_GROUP` /
    `NEW_GROUP`). Replaces per-list email sharing, which is **removed**
    (`list_members` dropped in V5 — one-way). ADR-0013. Phased plan:
    `docs/plans/group-tenancy.md`. Backend phases A–B landed (`66c4a1b`,
-   `6e444f7`, `2316d43`); frontend phase C in progress.
+   `6e444f7`, `2316d43`); frontend phase C landed (`d8f8d49`). E2E verified
+   2026-07-20: V4+V5 applied to real pre-V4 data (2 users, 2 lists) —
+   default group created, both users and lists backfilled, `list_members`
+   dropped; a user now sees a group peer's list she never had access to.
+   Full API flow green (403 NO_GROUP → bootstrap redeem → JOIN invite → peer
+   sees list → reuse 422 → cross-group 403 → SSE issuance/claim-mismatch
+   403), plus live SSE fan-out of all 6 LWW fields from a non-owner peer.
    Folded in: a **pre-existing SSE authorization hole** — token issuance never
    checked access to the requested `listId`, and `subscribe` never compared the
    token's `listId` claim to the path, so any authenticated user could stream
