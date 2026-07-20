@@ -7,6 +7,7 @@ import com.shopmate.domain.port.out.UserRepository;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,7 +39,15 @@ public class UserRepositoryAdapter implements UserRepository {
         return toDomain(jpaRepository.save(entity));
     }
 
+    @Override
+    public List<User> findAllByGroupId(UUID groupId) {
+        // Stub: UserEntity has no group_id column yet (added in task A3, which also
+        // provides the real derived-query implementation).
+        throw new UnsupportedOperationException("findAllByGroupId not yet implemented — see task A3");
+    }
+
     User toDomain(UserEntity e) {
-        return new User(e.getId(), e.getEmail(), e.getDisplayName(), e.getAvatarUrl());
+        // TODO(A3): UserEntity has no group_id column yet; wire it through once it does.
+        return new User(e.getId(), e.getEmail(), e.getDisplayName(), e.getAvatarUrl(), null);
     }
 }

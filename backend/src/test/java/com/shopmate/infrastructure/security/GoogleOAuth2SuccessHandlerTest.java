@@ -72,7 +72,7 @@ class GoogleOAuth2SuccessHandlerTest {
         when(userRepository.save(org.mockito.ArgumentMatchers.any()))
             .thenAnswer(i -> {
                 User u = i.getArgument(0);
-                return new User(userId, u.email(), u.displayName(), u.avatarUrl());
+                return new User(userId, u.email(), u.displayName(), u.avatarUrl(), u.groupId());
             });
         when(authCodeService.issueCode(org.mockito.ArgumentMatchers.anyString())).thenReturn("code-1");
 
@@ -90,7 +90,7 @@ class GoogleOAuth2SuccessHandlerTest {
         UUID existingId = UUID.randomUUID();
         when(authentication.getPrincipal()).thenReturn(googleUser("known@example.com"));
         when(userRepository.findByEmail("known@example.com"))
-            .thenReturn(Optional.of(new User(existingId, "known@example.com", "Old Name", null)));
+            .thenReturn(Optional.of(new User(existingId, "known@example.com", "Old Name", null, null)));
         when(userRepository.save(org.mockito.ArgumentMatchers.any()))
             .thenAnswer(i -> i.getArgument(0));
         when(authCodeService.issueCode(org.mockito.ArgumentMatchers.anyString())).thenReturn("code-7");
@@ -103,5 +103,44 @@ class GoogleOAuth2SuccessHandlerTest {
         assertThat(saved.getValue().id()).isEqualTo(existingId);
         assertThat(saved.getValue().displayName()).isEqualTo("Alice");
         assertThat(response.getRedirectedUrl()).endsWith("?code=code-7");
+    }
+
+    @Test
+    void existingUserWithGroupKeepsGroupIdOnReLogin() throws Exception {
+        // Bug trap: onAuthenticationSuccess rebuilds the User record from scratch on
+        // every login. If groupId isn't explicitly carried over from the existing
+        // record, a returning user is silently ejected from their group on next sign-in.
+        var handler = new GoogleOAuth2SuccessHandler(userRepository, authCodeService, SECRET, FRONTEND);
+        UUID existingId = UUID.randomUUID();
+        UUID existingGroupId = UUID.randomUUID();
+        when(authentication.getPrincipal()).thenReturn(googleUser("known@example.com"));
+        when(userRepository.findByEmail("known@example.com"))
+            .thenReturn(Optional.of(new User(existingId, "known@example.com", "Old Name", null, existingGroupId)));
+        when(userRepository.save(org.mockito.ArgumentMatchers.any()))
+            .thenAnswer(i -> i.getArgument(0));
+        when(authCodeService.issueCode(org.mockito.ArgumentMatchers.anyString())).thenReturn("code-8");
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), new MockHttpServletResponse(), authentication);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().id()).isEqualTo(existingId);
+        assertThat(saved.getValue().groupId()).isEqualTo(existingGroupId);
+    }
+
+    @Test
+    void newUserHasNullGroupId() throws Exception {
+        var handler = new GoogleOAuth2SuccessHandler(userRepository, authCodeService, SECRET, FRONTEND);
+        when(authentication.getPrincipal()).thenReturn(googleUser("brandnew@example.com"));
+        when(userRepository.findByEmail("brandnew@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(org.mockito.ArgumentMatchers.any()))
+            .thenAnswer(i -> i.getArgument(0));
+        when(authCodeService.issueCode(org.mockito.ArgumentMatchers.anyString())).thenReturn("code-9");
+
+        handler.onAuthenticationSuccess(new MockHttpServletRequest(), new MockHttpServletResponse(), authentication);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().groupId()).isNull();
     }
 }

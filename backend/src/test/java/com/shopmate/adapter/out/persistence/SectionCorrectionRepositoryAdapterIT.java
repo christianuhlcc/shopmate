@@ -50,7 +50,7 @@ class SectionCorrectionRepositoryAdapterIT {
     private static int ownerCounter = 0;
 
     private UUID createListAndOwner() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), nextOwnerEmail(), "Owner", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), nextOwnerEmail(), "Owner", null, null));
         UUID listId = UUID.randomUUID();
         ShoppingList list = new ShoppingList(listId, "Section Correction Test", owner.id(),
             Set.of(owner.id()), Map.of(), Instant.now());
@@ -65,7 +65,7 @@ class SectionCorrectionRepositoryAdapterIT {
     @Test
     void roundTripsAStoredCorrection() {
         UUID listId = createListAndOwner();
-        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod1@test.com", "Modifier", null));
+        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod1@test.com", "Modifier", null, null));
 
         assertThat(sectionCorrectionRepository.find(listId, "hefe")).isEmpty();
 
@@ -77,7 +77,7 @@ class SectionCorrectionRepositoryAdapterIT {
     @Test
     void newerTimestampOverwritesOlderCorrection() {
         UUID listId = createListAndOwner();
-        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod2@test.com", "Modifier", null));
+        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod2@test.com", "Modifier", null, null));
 
         sectionCorrectionRepository.upsert(listId, "hefe", Section.BROT_BACKWAREN, 100L, modifier.id());
         sectionCorrectionRepository.upsert(listId, "hefe", Section.GETRAENKE, 200L, modifier.id());
@@ -88,7 +88,7 @@ class SectionCorrectionRepositoryAdapterIT {
     @Test
     void olderTimestampDoesNotOverwriteNewerCorrection() {
         UUID listId = createListAndOwner();
-        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod3@test.com", "Modifier", null));
+        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod3@test.com", "Modifier", null, null));
 
         sectionCorrectionRepository.upsert(listId, "hefe", Section.GETRAENKE, 200L, modifier.id());
         sectionCorrectionRepository.upsert(listId, "hefe", Section.BROT_BACKWAREN, 100L, modifier.id());
@@ -100,7 +100,7 @@ class SectionCorrectionRepositoryAdapterIT {
     void correctionsAreScopedPerList() {
         UUID listIdA = createListAndOwner();
         UUID listIdB = createListAndOwner();
-        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod4@test.com", "Modifier", null));
+        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod4@test.com", "Modifier", null, null));
 
         sectionCorrectionRepository.upsert(listIdA, "hefe", Section.BROT_BACKWAREN, 100L, modifier.id());
 
@@ -111,7 +111,7 @@ class SectionCorrectionRepositoryAdapterIT {
     @Test
     void correctionIsDeletedWhenListIsDeleted() {
         UUID listId = createListAndOwner();
-        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod5@test.com", "Modifier", null));
+        User modifier = userRepository.save(new User(UUID.randomUUID(), "sc-mod5@test.com", "Modifier", null, null));
 
         sectionCorrectionRepository.upsert(listId, "hefe", Section.BROT_BACKWAREN, 100L, modifier.id());
         assertThat(sectionCorrectionRepository.find(listId, "hefe")).isPresent();

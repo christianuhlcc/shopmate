@@ -351,7 +351,7 @@ class ShoppingListServiceTest {
         UUID newMemberId = UUID.randomUUID();
         when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(emptyList()));
         when(userRepository.findByEmail("friend@example.com"))
-            .thenReturn(Optional.of(new User(newMemberId, "friend@example.com", "Friend", null)));
+            .thenReturn(Optional.of(new User(newMemberId, "friend@example.com", "Friend", null, null)));
         when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         ShoppingList updated = service.addMember(LIST_ID, "friend@example.com", OWNER_ID);

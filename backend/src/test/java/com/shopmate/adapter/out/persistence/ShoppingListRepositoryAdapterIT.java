@@ -44,7 +44,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void saveAndFindListWithMember() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "owner@test.com", "Owner", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), "owner@test.com", "Owner", null, null));
         ShoppingList list = listRepository.save(new ShoppingList(
             UUID.randomUUID(), "Groceries", owner.id(),
             java.util.Set.of(owner.id()), java.util.Map.of(), java.time.Instant.now()));
@@ -57,7 +57,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void findAllByMemberId() {
-        User user = userRepository.save(new User(UUID.randomUUID(), "member@test.com", "Member", null));
+        User user = userRepository.save(new User(UUID.randomUUID(), "member@test.com", "Member", null, null));
         ShoppingList list = listRepository.save(new ShoppingList(
             UUID.randomUUID(), "My List", user.id(),
             java.util.Set.of(user.id()), java.util.Map.of(), java.time.Instant.now()));
@@ -68,7 +68,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void lwwMergePersistedCorrectly() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "lww@test.com", "LWW User", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), "lww@test.com", "LWW User", null, null));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
@@ -93,7 +93,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void olderChangeDoesNotOverwriteNewer() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "stale@test.com", "Stale User", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), "stale@test.com", "Stale User", null, null));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
@@ -115,7 +115,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void updatesToEveryLwwFieldArePersisted() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "fields@test.com", "Fields User", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), "fields@test.com", "Fields User", null, null));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 
@@ -146,7 +146,7 @@ class ShoppingListRepositoryAdapterIT {
 
     @Test
     void sectionDefaultsToSonstigesAndRoundTrips() {
-        User owner = userRepository.save(new User(UUID.randomUUID(), "section@test.com", "Section User", null));
+        User owner = userRepository.save(new User(UUID.randomUUID(), "section@test.com", "Section User", null, null));
         UUID listId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 

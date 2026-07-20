@@ -77,7 +77,7 @@ class ShoppingListControllerTest {
     void getListsMapsDomainListsToDtos() {
         when(shoppingListUseCase.getListsForUser(USER_ID)).thenReturn(List.of(list(Map.of())));
         when(userRepository.findById(USER_ID))
-            .thenReturn(Optional.of(new User(USER_ID, "me@example.com", "Me", "http://pic")));
+            .thenReturn(Optional.of(new User(USER_ID, "me@example.com", "Me", "http://pic", null)));
         when(userRepository.findById(OTHER_ID)).thenReturn(Optional.empty());
 
         ResponseEntity<List<com.shopmate.generated.model.ShoppingList>> response = controller.getLists();

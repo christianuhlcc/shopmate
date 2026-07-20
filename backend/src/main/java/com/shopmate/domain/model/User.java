@@ -6,5 +6,6 @@ public record User(
     UUID id,
     String email,
     String displayName,
-    String avatarUrl
+    String avatarUrl,
+    UUID groupId
 ) {}

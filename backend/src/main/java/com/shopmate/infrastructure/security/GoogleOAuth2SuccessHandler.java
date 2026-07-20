@@ -48,9 +48,12 @@ public class GoogleOAuth2SuccessHandler implements AuthenticationSuccessHandler 
         String name = oauth2User.getAttribute("name");
         String picture = oauth2User.getAttribute("picture");
 
+        // Preserve groupId on re-login: this record is otherwise rebuilt from scratch
+        // on every sign-in, and a missing groupId here would silently eject a
+        // returning user from their group.
         User user = userRepository.findByEmail(email)
-                .map(existing -> userRepository.save(new User(existing.id(), email, name, picture)))
-                .orElseGet(() -> userRepository.save(new User(UUID.randomUUID(), email, name, picture)));
+                .map(existing -> userRepository.save(new User(existing.id(), email, name, picture, existing.groupId())))
+                .orElseGet(() -> userRepository.save(new User(UUID.randomUUID(), email, name, picture, null)));
 
         long now = System.currentTimeMillis();
         long exp = now + 24L * 60 * 60 * 1000; // 24 hours

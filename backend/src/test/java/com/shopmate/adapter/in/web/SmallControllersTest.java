@@ -45,7 +45,7 @@ class SmallControllersTest {
     void userControllerReturnsCurrentUserProfile() {
         when(securityContextHelper.getCurrentUserId()).thenReturn(USER_ID);
         when(userRepository.findById(USER_ID))
-            .thenReturn(Optional.of(new User(USER_ID, "me@example.com", "Me", "http://pic")));
+            .thenReturn(Optional.of(new User(USER_ID, "me@example.com", "Me", "http://pic", null)));
         var controller = new UserController(userRepository, securityContextHelper);
 
         var response = controller.getCurrentUser();
