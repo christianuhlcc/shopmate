@@ -95,3 +95,20 @@ jobs:
             --query '{status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' \
             --output json | jq -r '"--- status: " + .status, "--- stdout:", .stdout, "--- stderr:", .stderr'
           test "$status" = Success
+
+      - name: Send deployment event to Dash0
+        if: always()
+        uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          event-name: dash0.deployment
+          body: 'ShopMate deployment ${{ job.status }}'
+          severity-number: ${{ job.status == 'success' && '9' || '17' }}
+          service-name: shopmate
+          service-version: ${{ env.DEPLOY_SHA }}
+          deployment-environment-name: production
+          deployment-status: ${{ job.status == 'success' && 'succeeded' || 'failed' }}
+          vcs-repository-url: ${{ github.server_url }}/${{ github.repository }}
+          vcs-ref-head-revision: ${{ env.DEPLOY_SHA }}
+          vcs-ref-head-name: ${{ github.event.workflow_run.head_branch || github.ref_name }}
