@@ -26,11 +26,17 @@ data "aws_iam_policy_document" "github_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Only workflows on main of this repo may deploy.
+    # Only workflows on main of this repo may deploy. The second value covers
+    # jobs that declare `environment: default` (e.g. to read Dash0 vars/secrets),
+    # which GitHub issues with an environment-scoped sub claim instead of the
+    # ref-based one.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values = [
+        "repo:${var.github_repo}:ref:refs/heads/main",
+        "repo:${var.github_repo}:environment:default",
+      ]
     }
   }
 }
