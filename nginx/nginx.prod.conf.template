@@ -37,6 +37,20 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000" always;
 
+    # Compress proxied responses too (gzip_proxied any) — the frontend
+    # upstream already gzips its own static assets, this covers API JSON.
+    gzip on;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_types
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        image/svg+xml;
+
     # Forwarded headers so Spring builds correct external URLs (OAuth2 redirects).
     proxy_set_header Host              $http_host;
     proxy_set_header X-Real-IP         $remote_addr;
