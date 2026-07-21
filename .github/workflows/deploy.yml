@@ -37,6 +37,8 @@ jobs:
     # arm64 runner: the t4g instance is arm64, so images build natively
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
+    # Dash0 vars/secrets (DASH0_OTLP_URL, DASH0_AUTH_TOKEN) live in this GitHub Environment.
+    environment: default
     steps:
       - uses: actions/checkout@v4
         with:
