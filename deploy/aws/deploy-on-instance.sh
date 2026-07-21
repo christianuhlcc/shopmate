@@ -72,6 +72,13 @@ fi
 compose pull backend frontend
 compose up -d --remove-orphans
 
+# nginx's own image rarely changes, but its config is a bind-mounted template
+# rendered by envsubst once at container start — Compose has no way to see
+# that the mounted file's *contents* changed, so it never recreates the
+# container on a config-only edit. Force it every deploy (learned 2026-07-21:
+# a gzip config change silently never took effect until a manual restart).
+compose up -d --force-recreate nginx
+
 echo "Waiting for backend health"
 status=starting
 for _ in $(seq 1 60); do
