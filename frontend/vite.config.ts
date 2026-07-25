@@ -24,6 +24,10 @@ export default defineConfig({
         functions: 90,
         lines: 90,
       },
+      // Setting `exclude` replaces vitest's defaults, so build output has to be
+      // listed explicitly: otherwise a coverage run after `npm run build` counts
+      // the bundled chunks in dist/ as 0%-covered source and drags the totals
+      // toward the 90% gate.
       exclude: [
         'src/api/**',
         'src/main.tsx',
@@ -31,6 +35,7 @@ export default defineConfig({
         'src/test/**',
         '**/*.config.*',
         'coverage/**',
+        'dist/**',
       ],
     },
   },
