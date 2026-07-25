@@ -73,6 +73,34 @@ public class ShoppingListService implements ShoppingListUseCase {
     }
 
     @Override
+    public ShoppingList copyList(UUID sourceListId, String newName, UUID requestingUserId) {
+        User user = requireUserWithGroup(requestingUserId);
+        ShoppingList source = findListOrThrow(sourceListId);
+        requireSameGroup(source, user);
+
+        UUID newListId = UUID.randomUUID();
+        long ts = System.currentTimeMillis();
+        Map<UUID, ShoppingItem> items = new HashMap<>();
+
+        // source.activeItems() is already deleted-filtered and sorted by sortKey.
+        for (ShoppingItem src : source.activeItems()) {
+            UUID itemId = UUID.randomUUID();
+            items.put(itemId, new ShoppingItem(itemId, newListId,
+                new LwwField<>(src.name().value(), ts, requestingUserId),
+                new LwwField<>(src.quantity().value(), ts, requestingUserId),
+                new LwwField<>(false, ts, requestingUserId),                 // checked reset for a fresh trip
+                new LwwField<>(false, ts, requestingUserId),                 // deleted
+                new LwwField<>(src.sortKey().value(), ts, requestingUserId), // preserve order
+                new LwwField<>(src.section().value(), ts, requestingUserId), // keep learned section
+                Map.of()));
+        }
+
+        ShoppingList copy = new ShoppingList(newListId, newName, requestingUserId,
+            user.groupId(), Map.copyOf(items), Instant.now());
+        return listRepository.save(copy);
+    }
+
+    @Override
     public ShoppingList getList(UUID listId, UUID requestingUserId) {
         User user = requireUserWithGroup(requestingUserId);
         ShoppingList list = findListOrThrow(listId);

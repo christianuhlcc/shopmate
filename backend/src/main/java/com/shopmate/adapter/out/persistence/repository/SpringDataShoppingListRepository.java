@@ -8,5 +8,5 @@ import java.util.UUID;
 
 public interface SpringDataShoppingListRepository extends JpaRepository<ShoppingListEntity, UUID> {
 
-    List<ShoppingListEntity> findAllByGroupId(UUID groupId);
+    List<ShoppingListEntity> findAllByGroupIdOrderByCreatedAtDesc(UUID groupId);
 }

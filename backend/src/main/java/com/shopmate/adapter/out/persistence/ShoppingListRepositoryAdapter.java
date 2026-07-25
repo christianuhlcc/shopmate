@@ -35,7 +35,7 @@ public class ShoppingListRepositoryAdapter implements ShoppingListRepository {
     @Override
     @Transactional(readOnly = true)
     public List<ShoppingList> findAllByGroupId(UUID groupId) {
-        return listJpa.findAllByGroupId(groupId).stream()
+        return listJpa.findAllByGroupIdOrderByCreatedAtDesc(groupId).stream()
             .map(this::toDomain)
             .toList();
     }

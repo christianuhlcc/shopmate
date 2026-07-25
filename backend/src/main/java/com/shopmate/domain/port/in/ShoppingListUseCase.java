@@ -12,6 +12,13 @@ public interface ShoppingListUseCase {
 
     ShoppingList createList(UUID ownerId, String name);
 
+    /**
+     * Copies the active (non-deleted) items of {@code sourceListId} into a new list named
+     * {@code newName}, owned by the caller's group. Copied items get fresh ids and timestamps,
+     * preserve name/quantity/section/order, and are reset to unchecked (a fresh shopping trip).
+     */
+    ShoppingList copyList(UUID sourceListId, String newName, UUID requestingUserId);
+
     ShoppingList getList(UUID listId, UUID requestingUserId);
 
     ShoppingList addItem(UUID listId, String name, String quantity, UUID requestingUserId);

@@ -85,7 +85,7 @@ cd frontend && npm run dev
 #   npm run dev, then open http://localhost:3000/preview.html?screen=<state>
 #   states: login | welcome | welcome-name | lists | lists-empty | lists-loading
 #           | list | list-empty | list-loading | list-error | callback-error
-#           (+ &sheet=create|group)
+#           (+ &sheet=create|copy|group)
 
 # Backend tests
 cd backend && JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew test

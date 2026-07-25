@@ -90,6 +90,23 @@ class ShoppingListRepositoryAdapterIT {
     }
 
     @Test
+    void findAllByGroupIdReturnsNewestCreatedFirst() {
+        UUID groupId = newGroup();
+        User owner = userRepository.save(new User(UUID.randomUUID(), "order@test.com", "Order User", null, groupId));
+
+        ShoppingList older = listRepository.save(new ShoppingList(
+            UUID.randomUUID(), "Older", owner.id(),
+            groupId, java.util.Map.of(), java.time.Instant.parse("2026-01-01T00:00:00Z")));
+        ShoppingList newer = listRepository.save(new ShoppingList(
+            UUID.randomUUID(), "Newer", owner.id(),
+            groupId, java.util.Map.of(), java.time.Instant.parse("2026-06-01T00:00:00Z")));
+
+        List<ShoppingList> lists = listRepository.findAllByGroupId(groupId);
+        assertThat(lists).extracting(ShoppingList::id)
+            .containsExactly(newer.id(), older.id());
+    }
+
+    @Test
     void lwwMergePersistedCorrectly() {
         UUID groupId = newGroup();
         User owner = userRepository.save(new User(UUID.randomUUID(), "lww@test.com", "LWW User", null, groupId));

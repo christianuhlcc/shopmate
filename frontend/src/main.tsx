@@ -7,6 +7,8 @@ import { AuthProvider } from './features/auth/AuthContext'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
 import { RequireGroup } from './features/auth/RequireGroup'
 import { LoadingSpinner } from './features/auth/LoadingSpinner'
+import { ListsPageSkeleton } from './features/shopping-list/components/ListsPageSkeleton'
+import { ShoppingListPageSkeleton } from './features/shopping-list/components/ShoppingListPageSkeleton'
 
 // Route-level code splitting: each page ships as its own chunk so the
 // initial bundle doesn't pay for e.g. @dnd-kit (shopping-list) just to
@@ -78,7 +80,7 @@ const router = createBrowserRouter([
       <AuthProvider>
         <ProtectedRoute>
           <RequireGroup>
-            <Suspense fallback={<LoadingSpinner />}>
+            <Suspense fallback={<ListsPageSkeleton />}>
               <ListsPage />
             </Suspense>
           </RequireGroup>
@@ -92,7 +94,7 @@ const router = createBrowserRouter([
       <AuthProvider>
         <ProtectedRoute>
           <RequireGroup>
-            <Suspense fallback={<LoadingSpinner />}>
+            <Suspense fallback={<ShoppingListPageSkeleton />}>
               <ShoppingListPage />
             </Suspense>
           </RequireGroup>

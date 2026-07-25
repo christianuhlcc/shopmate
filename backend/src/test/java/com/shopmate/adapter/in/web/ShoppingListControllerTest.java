@@ -6,6 +6,7 @@ import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
 import com.shopmate.domain.port.in.ShoppingListUseCase;
 import com.shopmate.generated.model.AddItemRequest;
+import com.shopmate.generated.model.CopyListRequest;
 import com.shopmate.generated.model.CreateListRequest;
 import com.shopmate.generated.model.ItemChangeRequest;
 import com.shopmate.generated.model.ItemField;
@@ -88,6 +89,21 @@ class ShoppingListControllerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(201);
         assertThat(response.getBody().getId()).isEqualTo(LIST_ID);
         assertThat(response.getBody().getGroupId()).isEqualTo(GROUP_ID);
+    }
+
+    @Test
+    void copyListReturns201WithDtoAndDelegates() {
+        UUID newListId = UUID.randomUUID();
+        ShoppingList copy = new ShoppingList(newListId, "Groceries (copy)", USER_ID, GROUP_ID, Map.of(), CREATED_AT);
+        when(shoppingListUseCase.copyList(LIST_ID, "Groceries (copy)", USER_ID)).thenReturn(copy);
+
+        var response = controller.copyList(LIST_ID, new CopyListRequest("Groceries (copy)"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(201);
+        assertThat(response.getBody().getId()).isEqualTo(newListId);
+        assertThat(response.getBody().getName()).isEqualTo("Groceries (copy)");
+        assertThat(response.getBody().getGroupId()).isEqualTo(GROUP_ID);
+        verify(shoppingListUseCase).copyList(LIST_ID, "Groceries (copy)", USER_ID);
     }
 
     @Test

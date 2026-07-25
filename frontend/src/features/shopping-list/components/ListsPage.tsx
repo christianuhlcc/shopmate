@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../../../api/client'
 import { GroupSheet } from '../../group/GroupSheet'
+import { ListsPageSkeleton } from './ListsPageSkeleton'
 
 interface ShoppingList {
   id: string
@@ -18,6 +19,9 @@ export function ListsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newListName, setNewListName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [copySource, setCopySource] = useState<ShoppingList | null>(null)
+  const [copyName, setCopyName] = useState('')
+  const [copying, setCopying] = useState(false)
   const [showGroup, setShowGroup] = useState(false)
   const navigate = useNavigate()
 
@@ -36,13 +40,16 @@ export function ListsPage() {
   }, [])
 
   useEffect(() => {
-    if (!showCreate) return
+    if (!showCreate && !copySource) return
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowCreate(false)
+      if (e.key === 'Escape') {
+        setShowCreate(false)
+        setCopySource(null)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showCreate])
+  }, [showCreate, copySource])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -53,11 +60,36 @@ export function ListsPage() {
     })
     setCreating(false)
     if (!apiError && data) {
-      setLists((prev) => [...prev, data])
+      setLists((prev) => [data, ...prev])
       setNewListName('')
       setShowCreate(false)
       navigate(`/lists/${data.id}`)
     }
+  }
+
+  function openCopy(list: ShoppingList) {
+    setCopySource(list)
+    setCopyName(`${list.name} (copy)`)
+  }
+
+  async function handleCopy(e: React.FormEvent) {
+    e.preventDefault()
+    if (!copySource || !copyName.trim()) return
+    setCopying(true)
+    const { data, error: apiError } = await apiClient.POST('/lists/{listId}/copy', {
+      params: { path: { listId: copySource.id } },
+      body: { name: copyName.trim() },
+    })
+    setCopying(false)
+    if (!apiError && data) {
+      setLists((prev) => [data, ...prev])
+      setCopySource(null)
+      navigate(`/lists/${data.id}`)
+    }
+  }
+
+  if (isLoading) {
+    return <ListsPageSkeleton />
   }
 
   return (
@@ -99,27 +131,13 @@ export function ListsPage() {
       </header>
 
       <main className="max-w-lg mx-auto px-5 py-6">
-        {isLoading && (
-          <div role="status" aria-label="Loading lists" className="space-y-3">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="bg-panel rounded-2xl border border-line p-5 animate-pulse"
-              >
-                <div className="h-4 w-2/5 rounded bg-line" />
-                <div className="mt-3 h-3 w-1/4 rounded bg-line/70" />
-              </div>
-            ))}
-          </div>
-        )}
-
         {error && (
           <div className="bg-danger-tint border border-danger/25 rounded-2xl p-4 text-danger text-body">
             {error}
           </div>
         )}
 
-        {!isLoading && !error && lists.length === 0 && (
+        {!error && lists.length === 0 && (
           <div className="text-center py-16 px-6">
             <EmptyPadGlyph />
             <p className="text-item font-semibold text-ink mt-5">No lists yet</p>
@@ -138,7 +156,7 @@ export function ListsPage() {
 
         <ul className="space-y-3">
           {lists.map((list) => (
-            <li key={list.id}>
+            <li key={list.id} className="relative">
               <button
                 onClick={() => navigate(`/lists/${list.id}`)}
                 className="pressable w-full bg-panel rounded-2xl border border-line p-5 text-left hover:border-marigold-deep/50 hover:bg-marigold-faint/40 flex items-center gap-4"
@@ -148,6 +166,10 @@ export function ListsPage() {
                     {list.name}
                   </span>
                 </span>
+                {/* Reserves the Copy button's 44px slot: the copy control is a
+                    sibling (a button can't nest in a button), so the name has
+                    to stop short of where it is absolutely positioned. */}
+                <span aria-hidden="true" className="flex-shrink-0 w-11" />
                 <svg
                   className="w-4 h-4 flex-shrink-0 text-ink-mute"
                   viewBox="0 0 16 16"
@@ -160,6 +182,29 @@ export function ListsPage() {
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={() => openCopy(list)}
+                aria-label={`Copy ${list.name}`}
+                className="pressable absolute right-[3.25rem] top-1/2 -translate-y-1/2 min-h-touch min-w-touch rounded-xl flex items-center justify-center text-ink-mute hover:text-ink hover:bg-marigold-deep/15 focus-visible:outline-ink"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <rect
+                    x="7"
+                    y="7"
+                    width="9"
+                    height="9"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                  />
+                  <path
+                    d="M4 13V5a1 1 0 0 1 1-1h8"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
                   />
                 </svg>
               </button>
@@ -208,6 +253,53 @@ export function ListsPage() {
                   className="pressable flex-1 min-h-touch px-4 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50 disabled:hover:bg-marigold"
                 >
                   {creating ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {copySource && (
+        <div
+          className="sheet-backdrop fixed inset-0 bg-ink/40 flex items-end sm:items-center justify-center z-overlay px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCopySource(null)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="copy-list-title"
+            className="sheet-panel bg-panel rounded-2xl shadow-xl p-6 w-full max-w-sm z-sheet"
+          >
+            <h2 id="copy-list-title" className="text-title font-semibold text-ink mb-4">
+              Copy list
+            </h2>
+            <form onSubmit={handleCopy}>
+              <input
+                type="text"
+                value={copyName}
+                onChange={(e) => setCopyName(e.target.value)}
+                placeholder="List name"
+                className="w-full border border-line rounded-xl px-4 py-3 text-body text-ink placeholder:text-ink-mute mb-4 focus:outline-none focus:ring-2 focus:ring-marigold-deep"
+                autoFocus
+                maxLength={100}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCopySource(null)}
+                  className="pressable flex-1 min-h-touch px-4 py-2.5 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={copying || !copyName.trim()}
+                  className="pressable flex-1 min-h-touch px-4 py-2.5 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50 disabled:hover:bg-marigold"
+                >
+                  {copying ? 'Copying…' : 'Copy'}
                 </button>
               </div>
             </form>
