@@ -8,7 +8,8 @@
  *   /preview.html?screen=login | welcome | welcome-name | lists | lists-empty
  *                | lists-loading | list | list-empty | list-loading | list-error
  *                | callback-error
- *   &sheet=create | group   — auto-opens the corresponding dialog
+ *   &sheet=create | copy | group   — auto-opens the corresponding dialog
+ *                                    (copy targets the first list's row button)
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -78,10 +79,11 @@ const ITEMS =
 const LISTS =
   screen === 'lists-empty'
     ? []
+    // Newest-first, mirroring the server's createdAt DESC ordering.
     : [
-        { id: 'l1', name: 'Groceries', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-01T10:00:00Z' },
-        { id: 'l2', name: 'Weekend BBQ', ownerId: 'u2', groupId: GROUP.id, createdAt: '2026-07-10T10:00:00Z' },
         { id: 'l3', name: 'Hardware store', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-15T10:00:00Z' },
+        { id: 'l2', name: 'Weekend BBQ', ownerId: 'u2', groupId: GROUP.id, createdAt: '2026-07-10T10:00:00Z' },
+        { id: 'l1', name: 'Groceries', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-01T10:00:00Z' },
       ]
 
 const NEVER = new Promise<Response>(() => {})
@@ -131,6 +133,21 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   if (path === '/api/lists' && method === 'GET') {
     if (screen === 'lists-loading') return NEVER
     return json(LISTS)
+  }
+  if (/^\/api\/lists\/[^/]+\/copy$/.test(path) && method === 'POST') {
+    const name = JSON.parse((init?.body as string) ?? '{}').name ?? 'Copy'
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'l1',
+          name,
+          ownerId: 'u1',
+          groupId: GROUP.id,
+          createdAt: '2026-07-20T10:00:00Z',
+        }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
   }
   if (/^\/api\/lists\/[^/]+\/sse-token$/.test(path)) return NEVER
   if (/^\/api\/lists\/[^/]+$/.test(path) && method === 'GET') {
@@ -211,7 +228,8 @@ async function mount() {
 
   if (sheet) {
     setTimeout(() => {
-      const label = sheet === 'create' ? /new list/i : /your group/i
+      const label =
+        sheet === 'create' ? /new list/i : sheet === 'copy' ? /^copy /i : /your group/i
       // The group trigger is an icon button carrying only an aria-label.
       const btn = Array.from(document.querySelectorAll('button')).find(
         (b) => label.test(b.textContent ?? '') || label.test(b.getAttribute('aria-label') ?? ''),

@@ -119,6 +119,79 @@ describe('ListsPage', () => {
     expect(await screen.findByText('The Millers')).toBeInTheDocument()
   })
 
+  it('renders lists in the order returned by the API', async () => {
+    mockedApi.GET.mockResolvedValue({
+      data: [makeList('l1', 'Alpha'), makeList('l2', 'Beta')],
+      error: undefined,
+    })
+    renderPage()
+    await screen.findByText('Alpha')
+    const names = screen.getAllByText(/^(Alpha|Beta)$/).map((el) => el.textContent)
+    expect(names).toEqual(['Alpha', 'Beta'])
+  })
+
+  it('copies a list and navigates to the new list', async () => {
+    mockedApi.POST.mockImplementation((url: string) => {
+      if (url === '/lists/{listId}/copy') {
+        return Promise.resolve({ data: makeList('l2', 'Groceries (copy)'), error: undefined })
+      }
+      return Promise.resolve({ data: makeList('l3', 'Other'), error: undefined })
+    })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Groceries')
+
+    await user.click(screen.getByRole('button', { name: /copy groceries/i }))
+    expect(screen.getByPlaceholderText(/list name/i)).toHaveValue('Groceries (copy)')
+    await user.click(screen.getByRole('button', { name: /^copy$/i }))
+
+    await waitFor(() =>
+      expect(mockedApi.POST).toHaveBeenCalledWith('/lists/{listId}/copy', {
+        params: { path: { listId: 'l1' } },
+        body: { name: 'Groceries (copy)' },
+      }),
+    )
+    expect(await screen.findByText('List detail')).toBeInTheDocument()
+  })
+
+  it('cancel closes the copy dialog', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Groceries')
+
+    await user.click(screen.getByRole('button', { name: /copy groceries/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /cancel/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockedApi.POST).not.toHaveBeenCalled()
+  })
+
+  it('escape closes the copy dialog', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Groceries')
+
+    await user.click(screen.getByRole('button', { name: /copy groceries/i }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockedApi.POST).not.toHaveBeenCalled()
+  })
+
+  it('does not navigate when copy fails', async () => {
+    mockedApi.POST.mockResolvedValue({ data: undefined, error: { message: 'bad' } })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Groceries')
+
+    await user.click(screen.getByRole('button', { name: /copy groceries/i }))
+    await user.click(screen.getByRole('button', { name: /^copy$/i }))
+
+    await waitFor(() => expect(mockedApi.POST).toHaveBeenCalled())
+    expect(screen.queryByText('List detail')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('does not create a list when creation fails', async () => {
     mockedApi.POST.mockResolvedValue({ data: undefined, error: { message: 'bad' } })
     const user = userEvent.setup()

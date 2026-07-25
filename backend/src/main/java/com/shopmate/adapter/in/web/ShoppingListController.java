@@ -8,6 +8,7 @@ import com.shopmate.domain.port.in.ShoppingListUseCase;
 import com.shopmate.generated.api.ItemsApi;
 import com.shopmate.generated.api.ListsApi;
 import com.shopmate.generated.model.AddItemRequest;
+import com.shopmate.generated.model.CopyListRequest;
 import com.shopmate.generated.model.CreateListRequest;
 import com.shopmate.generated.model.ItemChangeRequest;
 import com.shopmate.generated.model.LwwFieldBoolean;
@@ -58,6 +59,15 @@ public class ShoppingListController implements ListsApi, ItemsApi {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
         ShoppingList created = shoppingListUseCase.createList(currentUserId, createListRequest.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(created));
+    }
+
+    @Override
+    public ResponseEntity<com.shopmate.generated.model.ShoppingList> copyList(
+            @PathVariable UUID listId,
+            @Valid @RequestBody CopyListRequest copyListRequest) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        ShoppingList copy = shoppingListUseCase.copyList(listId, copyListRequest.getName(), currentUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDto(copy));
     }
 
     @Override

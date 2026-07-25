@@ -342,6 +342,111 @@ class ShoppingListServiceTest {
         assertThat(created.items()).isEmpty();
     }
 
+    private ShoppingList sourceListForCopy() {
+        Map<UUID, ShoppingItem> items = new HashMap<>();
+        UUID milk = UUID.randomUUID();
+        items.put(milk, new ShoppingItem(milk, LIST_ID,
+            new LwwField<>("Milk", 100L, OWNER_ID),
+            new LwwField<>("2", 100L, OWNER_ID),
+            new LwwField<>(true, 100L, OWNER_ID),   // checked in the source
+            new LwwField<>(false, 100L, OWNER_ID),
+            new LwwField<>("a0", 100L, OWNER_ID),
+            new LwwField<>("MOLKEREI_EIER", 100L, OWNER_ID),
+            Map.of()));
+        UUID bread = UUID.randomUUID();
+        items.put(bread, new ShoppingItem(bread, LIST_ID,
+            new LwwField<>("Bread", 100L, OWNER_ID),
+            new LwwField<>("1", 100L, OWNER_ID),
+            new LwwField<>(false, 100L, OWNER_ID),
+            new LwwField<>(false, 100L, OWNER_ID),
+            new LwwField<>("b0", 100L, OWNER_ID),
+            new LwwField<>("BROT_BACKWAREN", 100L, OWNER_ID),
+            Map.of()));
+        UUID gone = UUID.randomUUID();
+        items.put(gone, new ShoppingItem(gone, LIST_ID,
+            new LwwField<>("Gone", 100L, OWNER_ID),
+            new LwwField<>("1", 100L, OWNER_ID),
+            new LwwField<>(false, 100L, OWNER_ID),
+            new LwwField<>(true, 100L, OWNER_ID),   // deleted — must not be copied
+            new LwwField<>("c0", 100L, OWNER_ID),
+            new LwwField<>("SONSTIGES", 100L, OWNER_ID),
+            Map.of()));
+        return new ShoppingList(LIST_ID, "Weekly", OWNER_ID, GROUP_ID, Map.copyOf(items), Instant.now());
+    }
+
+    @Test
+    void copyListDuplicatesActiveItemsResetsCheckedAndPreservesFields() {
+        ShoppingList source = sourceListForCopy();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(source));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        ShoppingList copy = service.copyList(LIST_ID, "Weekly (copy)", MEMBER_ID);
+
+        // New list header: fresh id, caller becomes owner, same group, given name.
+        assertThat(copy.id()).isNotEqualTo(LIST_ID);
+        assertThat(copy.name()).isEqualTo("Weekly (copy)");
+        assertThat(copy.ownerId()).isEqualTo(MEMBER_ID);
+        assertThat(copy.groupId()).isEqualTo(GROUP_ID);
+        assertThat(copy.createdAt()).isNotNull();
+
+        // Deleted item is dropped; the two active items are copied, in sortKey order.
+        List<ShoppingItem> copied = copy.activeItems();
+        assertThat(copied).hasSize(2);
+        ShoppingItem milk = copied.get(0);
+        ShoppingItem bread = copied.get(1);
+
+        assertThat(milk.name().value()).isEqualTo("Milk");
+        assertThat(milk.quantity().value()).isEqualTo("2");
+        assertThat(milk.section().value()).isEqualTo("MOLKEREI_EIER");
+        assertThat(milk.sortKey().value()).isEqualTo("a0");
+        assertThat(bread.name().value()).isEqualTo("Bread");
+        assertThat(bread.section().value()).isEqualTo("BROT_BACKWAREN");
+
+        // Checked state reset to false for a fresh trip (source Milk was checked).
+        assertThat(copied).allSatisfy(item -> assertThat(item.checked().value()).isFalse());
+
+        // Copied items get fresh ids and belong to the new list.
+        assertThat(copied).allSatisfy(item -> {
+            assertThat(item.listId()).isEqualTo(copy.id());
+            assertThat(source.items()).doesNotContainKey(item.id());
+        });
+    }
+
+    @Test
+    void copyListDoesNotMutateSource() {
+        ShoppingList source = sourceListForCopy();
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(source));
+        when(listRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.copyList(LIST_ID, "Weekly (copy)", MEMBER_ID);
+
+        assertThat(source.activeItems()).hasSize(2);
+        assertThat(source.activeItems().get(0).checked().value()).isTrue();
+    }
+
+    @Test
+    void copyListForbiddenForNonMember() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.of(sourceListForCopy()));
+        assertThatThrownBy(() -> service.copyList(LIST_ID, "Nope", STRANGER_ID))
+            .isInstanceOf(AccessForbiddenException.class);
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void copyListThrowsWhenSourceMissing() {
+        when(listRepository.findById(LIST_ID)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.copyList(LIST_ID, "Nope", MEMBER_ID))
+            .isInstanceOf(ListNotFoundException.class);
+        verify(listRepository, never()).save(any());
+    }
+
+    @Test
+    void copyListThrowsForGrouplessCaller() {
+        assertThatThrownBy(() -> service.copyList(LIST_ID, "Nope", GROUPLESS_ID))
+            .isInstanceOf(NoGroupException.class);
+        verify(listRepository, never()).save(any());
+    }
+
     @Test
     void getListReturnsListForMember() {
         ShoppingList list = emptyList();

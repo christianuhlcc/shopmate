@@ -1,6 +1,23 @@
 # Implementation Plan: Copy a shopping list
 
-**Status:** Not started — ready for implementation.
+**Status:** Implemented and verified 2026-07-25. All four verification steps
+below were exercised: backend `./gradlew check`, frontend
+`npm run test:coverage`, a full `docker compose` end-to-end run (real Postgres,
+dev-minted JWT since Google login can't be automated), and the mock visual
+preview.
+
+Confirmed end-to-end: deleted items are not copied, checked state resets, and
+sortKey plus a *user-corrected* section carry over (a corrected `VORRAT` on
+`Äpfel` survived the copy instead of being re-classified to `OBST_GEMUESE`).
+Source list untouched; copy rows carry fresh ids with zero tombstones; lists
+index returns newest-first; `403 NO_GROUP` for a group-less caller, `403
+ACCESS_FORBIDDEN` + no leakage for a cross-group caller, `404` for an unknown
+source, `400` for blank and 101-char names.
+
+One pre-existing defect found but **not** fixed here, since it is global rather
+than copy-specific: a missing or malformed JSON body returns `500`, not `400` —
+`POST /lists` behaves identically, so `HttpMessageNotReadableException` is
+simply unmapped in `ApiExceptionHandler`.
 
 No ADR: this is a feature-level change that folds under
 [ADR-0013](../adr/0013-group-tenancy-invite-codes.md) (group tenancy).
