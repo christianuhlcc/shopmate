@@ -66,6 +66,17 @@ processors:
       - context: log
         statements:
           - set(resource.attributes["service.name"], attributes["fluent.tag"]) where attributes["fluent.tag"] != nil
+  # SSE stream tokens arrive as ?token=… (EventSource cannot set headers) and
+  # the Java agent captures url.query on every server span — so the trace
+  # export is a second way a live bearer credential reaches Dash0, alongside
+  # the nginx access log (handled in nginx.prod.conf.template). Redact the
+  # value, keep the parameter, so the span still shows a token was present.
+  transform/redact_query_tokens:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(span.attributes["url.query"], "token=[^&]*", "token=REDACTED")
   batch:
     metadata_keys:
       - X-Forwarded-For
@@ -81,7 +92,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, batch]
+      processors: [memory_limiter, resourcedetection/system, transform/redact_query_tokens, batch]
       exporters: [otlphttp/dash0]
     metrics:
       receivers: [otlp, hostmetrics, docker_stats]

@@ -30,10 +30,18 @@ env:
 jobs:
   deploy:
     name: Build, push, deploy
+    # head_repository and event are both load-bearing, not belt-and-braces:
+    # `workflow_run` fires for CI runs started by fork pull requests too, and it
+    # runs in THIS repo's context with THIS repo's secrets (AWS OIDC, ECR push).
+    # head_branch is the branch name in the *head* repo, so a fork whose branch
+    # is called `main` satisfies it on its own — the repo is public, so that is
+    # open to anyone. Require the run to come from this repo and from a push.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     # arm64 runner: the t4g instance is arm64, so images build natively
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
@@ -100,7 +108,11 @@ jobs:
 
       - name: Send deployment event to Dash0
         if: always()
-        uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
+        # Pinned to a commit SHA, not @main: this step runs in a job holding
+        # id-token: write, DASH0_AUTH_TOKEN, and a live AWS session, so a bad
+        # commit on that repo's default branch would execute with all of it.
+        # Bump deliberately (Dependabot's github-actions ecosystem keeps it current).
+        uses: dash0hq/dash0-cli/.github/actions/send-log-event@cf6f58073428c774bf2e287be67aaa7da6a4e9a3 # v1.16.2
         with:
           otlp-url: ${{ vars.DASH0_OTLP_URL }}
           auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
