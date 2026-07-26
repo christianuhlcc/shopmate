@@ -1,11 +1,14 @@
 # Picnic Export — Implementation Plan
 
-**Status:** Phases A, B, C, D1 done. **D2 ran on 2026-07-26 against Docker and a
-real Picnic account and FAILED at step 5 — the feature cannot work as designed.**
-Picnic requires two-factor auth: login returns an auth key, but that key is
-refused (403) by search and cart until a second factor is verified. ADR-0014
-never considered 2FA. See §6 "D2 results" for the evidence and what it costs.
-Steps 1–4 and 9 passed. No PR has been opened yet.
+**Status:** Phases A–D1 done. D2 first ran on 2026-07-26 and **failed** at step 5:
+Picnic requires two-factor auth, and the flat `/search` endpoint was gone. Both
+were then fixed the same day (2FA linking flow per the ADR-0014 amendment, plus
+the page-tree parser), and **suggestions now work end-to-end against a real
+account** — six list items, five real German products each, with prices, units
+and working images. Steps 1–5 and 9 pass.
+
+**Still unverified: the cart write (steps 6–7).** Nothing has ever been added to
+a real Picnic cart. No PR has been opened yet.
 
 ## Context
 
@@ -415,10 +418,34 @@ unlikely to match. The image URL template, however, is now corroborated:
 the reference client builds `{base}/static/images/{id}/{size}.png`, which is
 what the code already does.
 
-**Recommendation:** do not open a PR to ship this as-is. It would ship a
-feature that cannot succeed for any 2FA-enabled account, and 2FA is not
-optional on Picnic accounts that have it enabled. Either extend ADR-0014 to
-cover 2FA + session persistence, or park the branch.
+### Resolution (same day)
+
+Both blockers were fixed and re-verified against the real account:
+
+- **2FA** — implemented per the ADR-0014 amendment: session-based
+  `PicnicClientPort`, `V7__picnic_session.sql` (session key replaces the
+  password digest, per-user device id, `PENDING_SECOND_FACTOR` state), and an
+  SMS-code step in the credentials sheet. A live link produced
+  `status=LINKED` with a generated device id and an encrypted 798-byte key.
+- **Search parsing** — the response is a page tree, not a product list. The
+  walker now recurses through every value (the real path to a product
+  alternates between `child`, `children` and `content` across ~14 levels) and
+  matches `SELLING_UNIT_TILE` nodes, taking `.sellingUnit`. Field names were
+  already right and are unchanged; the image URL template is confirmed.
+- **Result:** `POST /picnic/suggestions` returns 200 with five real products
+  per item (e.g. `s1018863 · 115 · 1L · Edeka Bio Fettarme H-Milch 1,5%`), and
+  the picker renders them with working thumbnails.
+
+**What is still not proven:** `POST /cart/add_product`. Search returns
+`s`-prefixed selling-unit ids and the page's own ADD action uses that same id,
+so it should be accepted — but no write to a real cart has ever been made.
+That is steps 6–7, and it is the last thing standing between this branch and a
+PR.
+
+**Also worth knowing before shipping:** a suggestions call costs one ~1.5 MB
+search response *per item*, so a six-item list moves ~9 MB and takes roughly
+15–20 s. That is a real UX and bandwidth problem at list sizes users will
+actually have, and nothing in the current design mitigates it.
 
 ### If something's off
 
