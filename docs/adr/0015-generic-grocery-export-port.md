@@ -1,6 +1,18 @@
 # ADR-0015: Generic `GroceryExportPort` for multiple grocery-export adapters
 
-Date: 2026-07-26 · Status: Accepted · Supersedes: parts of ADR-0014
+Date: 2026-07-26 · Status: Draft — on hold, not adopted
+
+**Hold rationale:** written the same day as ADR-0014, before a single line of
+Picnic-adapter code existed. Put on hold on review: we don't actually know
+what a second grocery exporter looks like yet, and shaping a port around one
+known adapter plus a guess is premature — it risks generalizing on the wrong
+axis and then paying for both the wrong abstraction and the real one.
+ADR-0014 (Picnic-specific port/table/endpoints) is the active design.
+Revisit this draft once a second exporter is actually being built, with its
+real shape in hand instead of a guess. Note also that the "feature flag
+becomes an allow-list" bullet below predates ADR-0014's later decision to
+drop the feature flag entirely — that bullet would need rework if this is
+ever resumed.
 
 ## Context
 

@@ -23,9 +23,11 @@ Two problems compound this:
    Picnic's catalog is a structured product list (brand, size, variant). No
    algorithm resolves this with confidence — a human has to pick.
 
-Given both, and that this is explicitly a **beta/experimental feature** (not
-core list-sync), the bar is: ship something narrow and disable-able, not a
-fully automated pipeline.
+Given both, and that this is explicitly an **experimental feature** (not
+core list-sync) built on an unofficial API, the bar is: ship something
+narrow, not a fully automated pipeline. It ships for everyone, no gate —
+rollout gating, if it's ever needed, is its own future ADR, not decided
+here.
 
 Options considered for the client:
 
@@ -57,16 +59,18 @@ Options considered for mapping:
   and a resolution order before we know if search-match quality even
   warrants it. Deferred to a follow-up ADR once the beta has usage.
 
-*(Superseded by ADR-0015: the port, credential table, and endpoints below are
-generalized into a `GroceryExportPort` that Picnic is the first instance of,
-before any of this was implemented. The adapter-level decisions — Java
-re-implementation, top-5 picker, per-user credentials, MD5 mechanics,
-Germany-only, no session caching, no learned mapping — are unchanged.)*
+*(ADR-0015 proposed generalizing the port below into a provider-agnostic
+`GroceryExportPort` ahead of any second exporter existing. Put on hold: we
+don't yet know the shape of a second grocery exporter, and guessing the
+abstraction before seeing one risks generalizing on the wrong axis. This
+ADR — the Picnic-specific port, table, and endpoints — is the active design.
+Revisit ADR-0015 once a second exporter is actually being built.)*
 
 ## Decision
 
-Adopt **A + B**, gated behind a beta feature flag
-(`shopmate.picnic-export.enabled`, default `false`).
+Adopt **A + B**. This ships to all users — no feature flag. Rollout gating
+(if the unofficial-API risk ever calls for a kill switch) is deliberately
+out of scope here and would be its own ADR.
 
 - **New outbound port** `domain/port/out/PicnicClientPort`: `login`,
   `searchArticles(term)`, `addToCart(articleId, count)`. Plain records for
@@ -128,8 +132,10 @@ Adopt **A + B**, gated behind a beta feature flag
   this proves worth generalizing.
 - **No automated tests against the real Picnic API** — the adapter is tested
   against a mocked HTTP layer only. An upstream breaking change won't be
-  caught by our CI; it'll surface as a user-facing failure first. Accepted
-  for a flagged beta.
+  caught by our CI; it'll surface as a user-facing failure first. There is no
+  feature flag to fall back on if this proves too fragile — that's an
+  accepted trade for shipping to everyone now (rollout gating is deferred,
+  see Decision).
 - **Per-user, not per-group, credentials** means two members of the same
   household each link their own Picnic account; there's no shared
   "household Picnic account" concept, and nothing here changes that.

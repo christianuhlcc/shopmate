@@ -20,4 +20,4 @@ decision date.
 | [0012](0012-section-classification-dictionary-plus-learned-corrections.md) | Section classification via bundled dictionary + learned corrections | 2026-07-19 |
 | [0013](0013-group-tenancy-invite-codes.md) | Group tenancy with single-use invite codes | 2026-07-20 |
 | [0014](0014-picnic-export-beta.md) | Picnic export (beta): Java re-implementation of the unofficial API, per-item top-5 picker | 2026-07-26 |
-| [0015](0015-generic-grocery-export-port.md) | Generic `GroceryExportPort` for multiple grocery-export adapters | 2026-07-26 |
+| [0015](0015-generic-grocery-export-port.md) | Generic `GroceryExportPort` for multiple grocery-export adapters — **draft, on hold** | 2026-07-26 |
