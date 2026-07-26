@@ -9,6 +9,9 @@ import com.shopmate.domain.model.InviteInvalidException;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.NoGroupException;
+import com.shopmate.domain.model.PicnicCredentialsMissingException;
+import com.shopmate.domain.model.PicnicLoginFailedException;
+import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.generated.model.ApiError;
 import org.slf4j.Logger;
@@ -86,6 +89,24 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handleInviteExpired(InviteExpiredException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ApiError("INVITE_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicCredentialsMissingException.class)
+    public ResponseEntity<ApiError> handlePicnicCredentialsMissing(PicnicCredentialsMissingException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_CREDENTIALS_MISSING", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicLoginFailedException.class)
+    public ResponseEntity<ApiError> handlePicnicLoginFailed(PicnicLoginFailedException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_LOGIN_FAILED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicUnavailableException.class)
+    public ResponseEntity<ApiError> handlePicnicUnavailable(PicnicUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiError("PICNIC_UNAVAILABLE", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
