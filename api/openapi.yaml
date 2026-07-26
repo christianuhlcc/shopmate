@@ -343,9 +343,13 @@ paths:
       operationId: linkPicnicCredentials
       summary: Link a Picnic account for grocery export
       description: |
-        Verifies the credentials against Picnic before persisting anything.
-        If Picnic rejects the login, responds 422 with code PICNIC_LOGIN_FAILED
-        and nothing is stored.
+        Exchanges the password for a Picnic session and stores that session; the
+        password itself is never persisted. If Picnic rejects the login, responds
+        422 with code PICNIC_LOGIN_FAILED and nothing is stored.
+
+        Picnic normally demands a second factor, in which case the response is
+        `PENDING_SECOND_FACTOR`, an SMS has already been sent, and linking is only
+        complete once `/2fa/verify` succeeds.
       requestBody:
         required: true
         content:
@@ -353,8 +357,12 @@ paths:
             schema:
               $ref: '#/components/schemas/PicnicCredentialsRequest'
       responses:
-        "204":
-          description: Credentials verified against Picnic and stored
+        "200":
+          description: Password accepted; see status for whether 2FA is still needed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicLinkResult'
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -383,6 +391,49 @@ paths:
                 $ref: '#/components/schemas/PicnicCredentialsStatus'
         "401":
           $ref: '#/components/responses/Unauthorized'
+
+  /users/me/picnic-credentials/2fa/send:
+    post:
+      tags: [PicnicExport]
+      operationId: sendPicnicSecondFactor
+      summary: Re-send the Picnic second-factor SMS code
+      description: |
+        Only valid while the link is PENDING_SECOND_FACTOR; otherwise responds
+        422 with code PICNIC_SECOND_FACTOR_REQUIRED (nothing to resend), or
+        PICNIC_CREDENTIALS_MISSING if no link exists at all.
+      responses:
+        "204":
+          description: Code sent
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /users/me/picnic-credentials/2fa/verify:
+    post:
+      tags: [PicnicExport]
+      operationId: verifyPicnicSecondFactor
+      summary: Complete Picnic linking with the SMS code
+      description: |
+        On success the stored session is replaced with the verified one and the
+        link becomes usable. A wrong or expired code responds 422 with code
+        PICNIC_LOGIN_FAILED and leaves the pending link intact, so the user can
+        retry without re-entering their password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PicnicSecondFactorRequest'
+      responses:
+        "204":
+          description: Second factor verified; the account is now linked
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
 
   /lists/{listId}/picnic/suggestions:
     post:
@@ -804,17 +855,46 @@ components:
           writeOnly: true
           description: Never echoed back in any response.
 
+    PicnicSecondFactorRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          writeOnly: true
+          description: The one-time code Picnic sent by SMS.
+
+    PicnicLinkState:
+      type: string
+      enum: [PENDING_SECOND_FACTOR, LINKED]
+      description: |
+        PENDING_SECOND_FACTOR means a session exists but can do nothing except
+        complete 2FA — it is not a usable link.
+
+    PicnicLinkResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/PicnicLinkState'
+
     PicnicCredentialsStatus:
       type: object
       required: [linked]
       properties:
         linked:
           type: boolean
+          description: True only for a fully verified link.
         email:
           type: string
           format: email
           nullable: true
-          description: Present only when linked.
+          description: Present whenever anything is stored, including a pending link.
+        status:
+          allOf:
+            - $ref: '#/components/schemas/PicnicLinkState'
+          nullable: true
+          description: Absent when nothing is stored at all.
 
     ArticleSuggestion:
       type: object

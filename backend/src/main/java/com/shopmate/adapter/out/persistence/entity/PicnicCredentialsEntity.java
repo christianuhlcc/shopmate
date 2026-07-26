@@ -18,8 +18,14 @@ public class PicnicCredentialsEntity {
     @Column(nullable = false)
     private String email;
 
-    @Column(name = "password_md5_encrypted", nullable = false)
-    private byte[] passwordMd5Encrypted;
+    @Column(name = "device_id", nullable = false)
+    private String deviceId;
+
+    @Column(name = "auth_key_encrypted", nullable = false)
+    private byte[] authKeyEncrypted;
+
+    @Column(name = "status", nullable = false)
+    private String status;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -29,22 +35,28 @@ public class PicnicCredentialsEntity {
 
     protected PicnicCredentialsEntity() {}
 
-    public PicnicCredentialsEntity(UUID userId, String email, byte[] passwordMd5Encrypted,
-                                    Instant createdAt, Instant updatedAt) {
+    public PicnicCredentialsEntity(UUID userId, String email, String deviceId, byte[] authKeyEncrypted,
+                                    String status, Instant createdAt, Instant updatedAt) {
         this.userId = userId;
         this.email = email;
-        this.passwordMd5Encrypted = passwordMd5Encrypted;
+        this.deviceId = deviceId;
+        this.authKeyEncrypted = authKeyEncrypted;
+        this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
 
     public UUID getUserId() { return userId; }
     public String getEmail() { return email; }
-    public byte[] getPasswordMd5Encrypted() { return passwordMd5Encrypted; }
+    public String getDeviceId() { return deviceId; }
+    public byte[] getAuthKeyEncrypted() { return authKeyEncrypted; }
+    public String getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
     public void setEmail(String email) { this.email = email; }
-    public void setPasswordMd5Encrypted(byte[] passwordMd5Encrypted) { this.passwordMd5Encrypted = passwordMd5Encrypted; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
+    public void setAuthKeyEncrypted(byte[] authKeyEncrypted) { this.authKeyEncrypted = authKeyEncrypted; }
+    public void setStatus(String status) { this.status = status; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

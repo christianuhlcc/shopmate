@@ -5,10 +5,15 @@ import com.shopmate.domain.model.ExportResult;
 import com.shopmate.domain.model.ExportSelection;
 import com.shopmate.domain.model.ItemSuggestion;
 import com.shopmate.domain.model.LwwField;
+import com.shopmate.domain.model.PicnicAccountLink;
 import com.shopmate.domain.model.PicnicCredentials;
 import com.shopmate.domain.model.PicnicCredentialsMissingException;
+import com.shopmate.domain.model.PicnicLinkState;
 import com.shopmate.domain.model.PicnicLinkStatus;
 import com.shopmate.domain.model.PicnicLoginFailedException;
+import com.shopmate.domain.model.PicnicLoginResult;
+import com.shopmate.domain.model.PicnicSecondFactorRequiredException;
+import com.shopmate.domain.model.PicnicSession;
 import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.model.ShoppingItem;
 import com.shopmate.domain.model.ShoppingList;
@@ -79,24 +84,74 @@ class PicnicExportServiceTest {
         return new ArticleSuggestion(id, "Article " + id, null, 199, "500g");
     }
 
+    private static final PicnicSession SESSION = new PicnicSession("verified-key", "A1B2C3D4E5F60718");
+
+    private void givenLinkedAccount() {
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+            new PicnicAccountLink("user@example.com", SESSION, PicnicLinkState.LINKED)));
+    }
+
+    private void givenLoginReturns(boolean secondFactorRequired) {
+        when(picnicClientPort.login(any(), any())).thenAnswer(inv ->
+            new PicnicLoginResult(new PicnicSession("issued-key", inv.getArgument(1)), secondFactorRequired));
+    }
+
     // --- linkCredentials -----------------------------------------------------------
 
     @Test
-    void linkCredentialsHashesPasswordAndVerifiesBeforeSaving() {
+    void linkCredentialsHashesPasswordAndStoresTheIssuedSession() {
+        givenLoginReturns(false);
+
+        PicnicLinkState state = service.linkCredentials(USER_ID, "user@example.com", "password");
+
+        assertThat(state).isEqualTo(PicnicLinkState.LINKED);
+
+        ArgumentCaptor<PicnicCredentials> creds = ArgumentCaptor.forClass(PicnicCredentials.class);
+        verify(picnicClientPort).login(creds.capture(), any());
+        assertThat(creds.getValue().email()).isEqualTo("user@example.com");
+        assertThat(creds.getValue().passwordMd5Hex()).isEqualTo(KNOWN_PASSWORD_MD5);
+
+        ArgumentCaptor<PicnicAccountLink> saved = ArgumentCaptor.forClass(PicnicAccountLink.class);
+        verify(picnicCredentialsRepository).save(eq(USER_ID), saved.capture());
+        assertThat(saved.getValue().state()).isEqualTo(PicnicLinkState.LINKED);
+        assertThat(saved.getValue().session().authKey()).isEqualTo("issued-key");
+    }
+
+    @Test
+    void linkCredentialsGeneratesAFreshDeviceIdPerLink() {
+        // One shared device id across users would make the whole install correlatable to Picnic
+        // and let one blocked identifier take everyone down with it.
+        givenLoginReturns(false);
+
         service.linkCredentials(USER_ID, "user@example.com", "password");
+        service.linkCredentials(UUID.randomUUID(), "other@example.com", "password");
 
-        ArgumentCaptor<PicnicCredentials> captor = ArgumentCaptor.forClass(PicnicCredentials.class);
-        verify(picnicClientPort).verifyLogin(captor.capture());
-        assertThat(captor.getValue().email()).isEqualTo("user@example.com");
-        assertThat(captor.getValue().passwordMd5Hex()).isEqualTo(KNOWN_PASSWORD_MD5);
+        ArgumentCaptor<String> deviceIds = ArgumentCaptor.forClass(String.class);
+        verify(picnicClientPort, times(2)).login(any(), deviceIds.capture());
+        assertThat(deviceIds.getAllValues().get(0)).hasSize(16).isNotEqualTo(deviceIds.getAllValues().get(1));
+    }
 
-        verify(picnicCredentialsRepository).save(eq(USER_ID), eq(captor.getValue()));
+    @Test
+    void linkCredentialsStoresTheProvisionalSessionBeforeRequestingTheCode() {
+        // /user/2fa/verify needs this exact key, so it has to be durable before the SMS goes
+        // out — otherwise a restart mid-link strands the user with no way to finish.
+        givenLoginReturns(true);
+
+        PicnicLinkState state = service.linkCredentials(USER_ID, "user@example.com", "password");
+
+        assertThat(state).isEqualTo(PicnicLinkState.PENDING_SECOND_FACTOR);
+
+        ArgumentCaptor<PicnicAccountLink> saved = ArgumentCaptor.forClass(PicnicAccountLink.class);
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(picnicCredentialsRepository, picnicClientPort);
+        order.verify(picnicCredentialsRepository).save(eq(USER_ID), saved.capture());
+        order.verify(picnicClientPort).sendSecondFactor(any());
+        assertThat(saved.getValue().state()).isEqualTo(PicnicLinkState.PENDING_SECOND_FACTOR);
+        assertThat(saved.getValue().isLinked()).isFalse();
     }
 
     @Test
     void linkCredentialsPropagatesLoginFailureAndNeverSaves() {
-        org.mockito.Mockito.doThrow(new PicnicLoginFailedException("bad password"))
-            .when(picnicClientPort).verifyLogin(any());
+        when(picnicClientPort.login(any(), any())).thenThrow(new PicnicLoginFailedException("bad password"));
 
         assertThatThrownBy(() -> service.linkCredentials(USER_ID, "user@example.com", "wrong"))
             .isInstanceOf(PicnicLoginFailedException.class);
@@ -106,8 +161,7 @@ class PicnicExportServiceTest {
 
     @Test
     void linkCredentialsPropagatesUnavailableAndNeverSaves() {
-        org.mockito.Mockito.doThrow(new PicnicUnavailableException("picnic down"))
-            .when(picnicClientPort).verifyLogin(any());
+        when(picnicClientPort.login(any(), any())).thenThrow(new PicnicUnavailableException("picnic down"));
 
         assertThatThrownBy(() -> service.linkCredentials(USER_ID, "user@example.com", "password"))
             .isInstanceOf(PicnicUnavailableException.class);
@@ -115,35 +169,115 @@ class PicnicExportServiceTest {
         verify(picnicCredentialsRepository, never()).save(any(), any());
     }
 
+    // --- second factor ---------------------------------------------------------------
+
+    @Test
+    void verifySecondFactorReplacesTheProvisionalSessionWithTheVerifiedOne() {
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+            new PicnicAccountLink("user@example.com",
+                new PicnicSession("provisional", "DEV1"), PicnicLinkState.PENDING_SECOND_FACTOR)));
+        when(picnicClientPort.verifySecondFactor(any(), eq("252000")))
+            .thenReturn(new PicnicSession("verified", "DEV1"));
+
+        service.verifySecondFactor(USER_ID, "252000");
+
+        ArgumentCaptor<PicnicAccountLink> saved = ArgumentCaptor.forClass(PicnicAccountLink.class);
+        verify(picnicCredentialsRepository).save(eq(USER_ID), saved.capture());
+        assertThat(saved.getValue().state()).isEqualTo(PicnicLinkState.LINKED);
+        assertThat(saved.getValue().session().authKey()).isEqualTo("verified");
+        assertThat(saved.getValue().email()).isEqualTo("user@example.com");
+    }
+
+    @Test
+    void verifySecondFactorLeavesThePendingLinkIntactOnAWrongCode() {
+        // A mistyped code must not cost the user their place in the flow.
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+            new PicnicAccountLink("user@example.com",
+                new PicnicSession("provisional", "DEV1"), PicnicLinkState.PENDING_SECOND_FACTOR)));
+        when(picnicClientPort.verifySecondFactor(any(), any()))
+            .thenThrow(new PicnicLoginFailedException("wrong code"));
+
+        assertThatThrownBy(() -> service.verifySecondFactor(USER_ID, "000000"))
+            .isInstanceOf(PicnicLoginFailedException.class);
+
+        verify(picnicCredentialsRepository, never()).save(any(), any());
+    }
+
+    @Test
+    void verifySecondFactorRejectsAnAlreadyLinkedAccount() {
+        givenLinkedAccount();
+
+        assertThatThrownBy(() -> service.verifySecondFactor(USER_ID, "252000"))
+            .isInstanceOf(PicnicSecondFactorRequiredException.class);
+    }
+
+    @Test
+    void secondFactorOperationsRequireSomethingToBeStored() {
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.verifySecondFactor(USER_ID, "252000"))
+            .isInstanceOf(PicnicCredentialsMissingException.class);
+        assertThatThrownBy(() -> service.resendSecondFactor(USER_ID))
+            .isInstanceOf(PicnicCredentialsMissingException.class);
+    }
+
+    @Test
+    void resendSecondFactorReusesTheStoredProvisionalSession() {
+        PicnicSession provisional = new PicnicSession("provisional", "DEV1");
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+            new PicnicAccountLink("user@example.com", provisional, PicnicLinkState.PENDING_SECOND_FACTOR)));
+
+        service.resendSecondFactor(USER_ID);
+
+        verify(picnicClientPort).sendSecondFactor(provisional);
+    }
+
     // --- unlinkCredentials -----------------------------------------------------------
 
     @Test
     void unlinkCredentialsDelegatesToRepository() {
         service.unlinkCredentials(USER_ID);
+
         verify(picnicCredentialsRepository).delete(USER_ID);
     }
 
-    // --- getCredentialsStatus -----------------------------------------------------------
+    // --- getCredentialsStatus --------------------------------------------------------
 
     @Test
-    void getCredentialsStatusReturnsLinkedWhenPresent() {
-        when(picnicCredentialsRepository.findByUserId(USER_ID))
-            .thenReturn(Optional.of(new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5)));
+    void getCredentialsStatusReportsALinkedAccount() {
+        givenLinkedAccount();
 
         PicnicLinkStatus status = service.getCredentialsStatus(USER_ID);
 
         assertThat(status.linked()).isTrue();
         assertThat(status.email()).isEqualTo("user@example.com");
+        assertThat(status.state()).isEqualTo(PicnicLinkState.LINKED);
     }
 
     @Test
-    void getCredentialsStatusReturnsNotLinkedWhenAbsent() {
+    void getCredentialsStatusReportsAPendingLinkAsNotYetLinked() {
+        // "linked" drives whether export is offered, so a half-finished link must read false
+        // while still surfacing the state the frontend resumes from.
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(
+            new PicnicAccountLink("user@example.com",
+                new PicnicSession("provisional", "DEV1"), PicnicLinkState.PENDING_SECOND_FACTOR)));
+
+        PicnicLinkStatus status = service.getCredentialsStatus(USER_ID);
+
+        assertThat(status.linked()).isFalse();
+        assertThat(status.email()).isEqualTo("user@example.com");
+        assertThat(status.state()).isEqualTo(PicnicLinkState.PENDING_SECOND_FACTOR);
+    }
+
+    @Test
+    void getCredentialsStatusReportsNothingStored() {
         when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
 
         PicnicLinkStatus status = service.getCredentialsStatus(USER_ID);
 
         assertThat(status.linked()).isFalse();
         assertThat(status.email()).isNull();
+        assertThat(status.state()).isNull();
     }
 
     // --- getSuggestions -----------------------------------------------------------
@@ -160,8 +294,7 @@ class PicnicExportServiceTest {
 
     @Test
     void getSuggestionsExcludesCheckedItemsAndCapsAtFive() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
 
         UUID activeItemId = UUID.randomUUID();
         UUID checkedItemId = UUID.randomUUID();
@@ -172,7 +305,7 @@ class PicnicExportServiceTest {
 
         List<ArticleSuggestion> sixResults = List.of(
             article("1"), article("2"), article("3"), article("4"), article("5"), article("6"));
-        when(picnicClientPort.searchArticles(credentials, "Milch")).thenReturn(sixResults);
+        when(picnicClientPort.searchArticles(SESSION, "Milch")).thenReturn(sixResults);
 
         List<ItemSuggestion> suggestions = service.getSuggestions(LIST_ID, USER_ID);
 
@@ -184,19 +317,18 @@ class PicnicExportServiceTest {
         assertThat(only.suggestions()).containsExactly(
             article("1"), article("2"), article("3"), article("4"), article("5"));
 
-        verify(picnicClientPort, never()).searchArticles(eq(credentials), eq("Butter"));
+        verify(picnicClientPort, never()).searchArticles(eq(SESSION), eq("Butter"));
         verify(shoppingListUseCase).getList(LIST_ID, USER_ID);
     }
 
     @Test
     void getSuggestionsPropagatesUnavailableFromSearch() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
 
         ShoppingItem active = item(UUID.randomUUID(), "Milch", "1", false, false, "a0");
         ShoppingList list = listOf(active);
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(list);
-        when(picnicClientPort.searchArticles(eq(credentials), any()))
+        when(picnicClientPort.searchArticles(eq(SESSION), any()))
             .thenThrow(new PicnicUnavailableException("picnic down"));
 
         assertThatThrownBy(() -> service.getSuggestions(LIST_ID, USER_ID))
@@ -217,8 +349,7 @@ class PicnicExportServiceTest {
 
     @Test
     void exportSkipsSelectionsWithNullArticleId() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
         UUID itemId = UUID.randomUUID();
         ShoppingItem it = item(itemId, "Milch", "1", false, false, "a0");
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf(it));
@@ -233,8 +364,7 @@ class PicnicExportServiceTest {
 
     @Test
     void exportRecordsFailureWhenItemNotOnList() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf());
 
         UUID staleItemId = UUID.randomUUID();
@@ -251,8 +381,7 @@ class PicnicExportServiceTest {
 
     @Test
     void exportIncrementsAddedOnSuccessfulAddToCart() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
         UUID itemId = UUID.randomUUID();
         ShoppingItem it = item(itemId, "Milch", "2", false, false, "a0");
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf(it));
@@ -263,13 +392,12 @@ class PicnicExportServiceTest {
         assertThat(result.added()).isEqualTo(1);
         assertThat(result.skipped()).isEqualTo(0);
         assertThat(result.failures()).isEmpty();
-        verify(picnicClientPort).addToCart(credentials, "article-1", 2);
+        verify(picnicClientPort).addToCart(SESSION, "article-1", 2);
     }
 
     @Test
     void exportCatchesUnavailableAndContinuesToNextSelection() {
-        PicnicCredentials credentials = new PicnicCredentials("user@example.com", KNOWN_PASSWORD_MD5);
-        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.of(credentials));
+        givenLinkedAccount();
         UUID failingItemId = UUID.randomUUID();
         UUID succeedingItemId = UUID.randomUUID();
         ShoppingItem failing = item(failingItemId, "Milch", "1", false, false, "a0");
@@ -277,7 +405,7 @@ class PicnicExportServiceTest {
         when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf(failing, succeeding));
 
         org.mockito.Mockito.doThrow(new PicnicUnavailableException("bad sku"))
-            .when(picnicClientPort).addToCart(credentials, "bad-article", 1);
+            .when(picnicClientPort).addToCart(SESSION, "bad-article", 1);
 
         ExportResult result = service.export(LIST_ID, USER_ID, List.of(
             new ExportSelection(failingItemId, "bad-article"),
@@ -288,7 +416,7 @@ class PicnicExportServiceTest {
         assertThat(result.failures()).hasSize(1);
         assertThat(result.failures().get(0).itemId()).isEqualTo(failingItemId);
         assertThat(result.failures().get(0).reason()).isEqualTo("bad sku");
-        verify(picnicClientPort).addToCart(credentials, "good-article", 1);
+        verify(picnicClientPort).addToCart(SESSION, "good-article", 1);
     }
 
     // --- parseCartCount -----------------------------------------------------------

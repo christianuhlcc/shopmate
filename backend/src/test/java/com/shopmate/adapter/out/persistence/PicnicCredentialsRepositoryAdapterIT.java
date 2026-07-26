@@ -1,6 +1,8 @@
 package com.shopmate.adapter.out.persistence;
 
-import com.shopmate.domain.model.PicnicCredentials;
+import com.shopmate.domain.model.PicnicAccountLink;
+import com.shopmate.domain.model.PicnicLinkState;
+import com.shopmate.domain.model.PicnicSession;
 import com.shopmate.domain.model.User;
 import com.shopmate.domain.port.out.PicnicCredentialsRepository;
 import com.shopmate.domain.port.out.UserRepository;
@@ -51,41 +53,67 @@ class PicnicCredentialsRepositoryAdapterIT {
         return userRepository.save(new User(UUID.randomUUID(), email, "Test User", null, null)).id();
     }
 
-    @Test
-    void saveThenFindByUserIdRoundTripsDecryptedDigest() {
-        UUID userId = newUser("picnic-roundtrip@test.com");
-        PicnicCredentials credentials = new PicnicCredentials("picnic@example.com", "5f4dcc3b5aa765d61d8327deb882cf99");
-
-        picnicCredentialsRepository.save(userId, credentials);
-
-        Optional<PicnicCredentials> found = picnicCredentialsRepository.findByUserId(userId);
-        assertThat(found).isPresent();
-        assertThat(found.get().email()).isEqualTo("picnic@example.com");
-        assertThat(found.get().passwordMd5Hex()).isEqualTo("5f4dcc3b5aa765d61d8327deb882cf99");
+    private static PicnicAccountLink link(String email, String authKey, PicnicLinkState state) {
+        return new PicnicAccountLink(email, new PicnicSession(authKey, "A1B2C3D4E5F60718"), state);
     }
 
     @Test
-    void storedBytesAreNotThePlaintextDigest() throws Exception {
+    void saveThenFindByUserIdRoundTripsTheDecryptedSession() {
+        UUID userId = newUser("picnic-roundtrip@test.com");
+
+        picnicCredentialsRepository.save(userId, link("picnic@example.com", "auth-key-123", PicnicLinkState.LINKED));
+
+        Optional<PicnicAccountLink> found = picnicCredentialsRepository.findByUserId(userId);
+        assertThat(found).isPresent();
+        assertThat(found.get().email()).isEqualTo("picnic@example.com");
+        assertThat(found.get().session().authKey()).isEqualTo("auth-key-123");
+        assertThat(found.get().session().deviceId()).isEqualTo("A1B2C3D4E5F60718");
+        assertThat(found.get().isLinked()).isTrue();
+    }
+
+    @Test
+    void aPendingLinkSurvivesTheRoundTripAsPending() {
+        // The provisional session has to be readable after a restart or the user is stranded
+        // mid-link with no way to finish 2FA.
+        UUID userId = newUser("picnic-pending@test.com");
+
+        picnicCredentialsRepository.save(userId,
+            link("pending@example.com", "provisional-key", PicnicLinkState.PENDING_SECOND_FACTOR));
+
+        Optional<PicnicAccountLink> found = picnicCredentialsRepository.findByUserId(userId);
+        assertThat(found).isPresent();
+        assertThat(found.get().state()).isEqualTo(PicnicLinkState.PENDING_SECOND_FACTOR);
+        assertThat(found.get().isLinked()).isFalse();
+        assertThat(found.get().session().authKey()).isEqualTo("provisional-key");
+    }
+
+    @Test
+    void storedBytesAreNotThePlaintextSessionKey() throws Exception {
         UUID userId = newUser("picnic-encrypted@test.com");
-        String plaintextDigest = "098f6bcd4621d373cade4e832627b4f6";
-        picnicCredentialsRepository.save(userId, new PicnicCredentials("picnic2@example.com", plaintextDigest));
+        String plaintextKey = "a-very-real-looking-picnic-auth-key";
+        picnicCredentialsRepository.save(userId, link("picnic2@example.com", plaintextKey, PicnicLinkState.LINKED));
 
         byte[] rawStored = queryRawEncryptedBytes(userId);
 
         assertThat(rawStored).isNotNull();
-        assertThat(rawStored).isNotEqualTo(plaintextDigest.getBytes(StandardCharsets.UTF_8));
+        assertThat(rawStored).isNotEqualTo(plaintextKey.getBytes(StandardCharsets.UTF_8));
     }
 
     @Test
     void saveTwiceForSameUserUpsertsRatherThanDuplicating() {
+        // Completing 2FA overwrites a pending row with the verified session — if that duplicated
+        // instead, the pending row could win a later read and the link would look broken.
         UUID userId = newUser("picnic-upsert@test.com");
-        picnicCredentialsRepository.save(userId, new PicnicCredentials("first@example.com", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
-        picnicCredentialsRepository.save(userId, new PicnicCredentials("second@example.com", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        picnicCredentialsRepository.save(userId,
+            link("first@example.com", "provisional", PicnicLinkState.PENDING_SECOND_FACTOR));
+        picnicCredentialsRepository.save(userId,
+            link("second@example.com", "verified", PicnicLinkState.LINKED));
 
-        Optional<PicnicCredentials> found = picnicCredentialsRepository.findByUserId(userId);
+        Optional<PicnicAccountLink> found = picnicCredentialsRepository.findByUserId(userId);
         assertThat(found).isPresent();
         assertThat(found.get().email()).isEqualTo("second@example.com");
-        assertThat(found.get().passwordMd5Hex()).isEqualTo("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        assertThat(found.get().session().authKey()).isEqualTo("verified");
+        assertThat(found.get().state()).isEqualTo(PicnicLinkState.LINKED);
 
         assertThat(countRows(userId)).isEqualTo(1);
     }
@@ -93,7 +121,7 @@ class PicnicCredentialsRepositoryAdapterIT {
     @Test
     void deleteRemovesRowAndSubsequentFindIsEmpty() {
         UUID userId = newUser("picnic-delete@test.com");
-        picnicCredentialsRepository.save(userId, new PicnicCredentials("todelete@example.com", "cccccccccccccccccccccccccccccccc"));
+        picnicCredentialsRepository.save(userId, link("todelete@example.com", "key", PicnicLinkState.LINKED));
 
         picnicCredentialsRepository.delete(userId);
 
@@ -113,7 +141,7 @@ class PicnicCredentialsRepositoryAdapterIT {
     private byte[] queryRawEncryptedBytes(UUID userId) throws Exception {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                 "SELECT password_md5_encrypted FROM picnic_credentials WHERE user_id = ?")) {
+                 "SELECT auth_key_encrypted FROM picnic_credentials WHERE user_id = ?")) {
             statement.setObject(1, userId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertThat(resultSet.next()).isTrue();

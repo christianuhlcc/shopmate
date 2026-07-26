@@ -2,7 +2,9 @@ package com.shopmate.adapter.out.persistence;
 
 import com.shopmate.adapter.out.persistence.entity.PicnicCredentialsEntity;
 import com.shopmate.adapter.out.persistence.repository.SpringDataPicnicCredentialsRepository;
-import com.shopmate.domain.model.PicnicCredentials;
+import com.shopmate.domain.model.PicnicAccountLink;
+import com.shopmate.domain.model.PicnicLinkState;
+import com.shopmate.domain.model.PicnicSession;
 import com.shopmate.domain.port.out.PicnicCredentialsRepository;
 import com.shopmate.infrastructure.security.CredentialCipher;
 import org.springframework.stereotype.Component;
@@ -14,9 +16,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Encrypts the MD5 password digest at rest via {@link CredentialCipher} (ADR-0014) — the
- * domain-facing {@link PicnicCredentials} record always carries the plaintext digest; encryption
- * is strictly an adapter concern, applied on the way in and reversed on the way out.
+ * Encrypts the Picnic session key at rest via {@link CredentialCipher} (ADR-0014) — the
+ * domain-facing {@link PicnicAccountLink} always carries the plaintext key; encryption is
+ * strictly an adapter concern, applied on the way in and reversed on the way out.
+ *
+ * <p>The device id is stored in the clear: on its own it identifies nothing and it is useless
+ * without the key it is paired with.
  */
 @Component
 public class PicnicCredentialsRepositoryAdapter implements PicnicCredentialsRepository {
@@ -31,29 +36,35 @@ public class PicnicCredentialsRepositoryAdapter implements PicnicCredentialsRepo
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<PicnicCredentials> findByUserId(UUID userId) {
-        return jpa.findById(userId).map(e -> new PicnicCredentials(
+    public Optional<PicnicAccountLink> findByUserId(UUID userId) {
+        return jpa.findById(userId).map(e -> new PicnicAccountLink(
             e.getEmail(),
-            new String(cipher.decrypt(e.getPasswordMd5Encrypted()), StandardCharsets.UTF_8)));
+            new PicnicSession(
+                new String(cipher.decrypt(e.getAuthKeyEncrypted()), StandardCharsets.UTF_8),
+                e.getDeviceId()),
+            PicnicLinkState.valueOf(e.getStatus())));
     }
 
     @Override
     @Transactional
-    public void save(UUID userId, PicnicCredentials credentials) {
-        byte[] encrypted = cipher.encrypt(credentials.passwordMd5Hex().getBytes(StandardCharsets.UTF_8));
+    public void save(UUID userId, PicnicAccountLink link) {
+        byte[] encrypted = cipher.encrypt(link.session().authKey().getBytes(StandardCharsets.UTF_8));
 
         Optional<PicnicCredentialsEntity> existing = jpa.findById(userId);
         if (existing.isPresent()) {
             PicnicCredentialsEntity entity = existing.get();
-            entity.setEmail(credentials.email());
-            entity.setPasswordMd5Encrypted(encrypted);
+            entity.setEmail(link.email());
+            entity.setDeviceId(link.session().deviceId());
+            entity.setAuthKeyEncrypted(encrypted);
+            entity.setStatus(link.state().name());
             entity.setUpdatedAt(Instant.now());
             jpa.save(entity);
             return;
         }
 
         Instant now = Instant.now();
-        jpa.save(new PicnicCredentialsEntity(userId, credentials.email(), encrypted, now, now));
+        jpa.save(new PicnicCredentialsEntity(userId, link.email(), link.session().deviceId(),
+            encrypted, link.state().name(), now, now));
     }
 
     @Override

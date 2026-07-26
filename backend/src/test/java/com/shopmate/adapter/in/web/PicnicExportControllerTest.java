@@ -44,12 +44,43 @@ class PicnicExportControllerTest {
     }
 
     @Test
-    void linkPicnicCredentialsDelegatesAndReturns204() {
+    void linkPicnicCredentialsReturnsTheResultingLinkState() {
+        when(picnicExportUseCase.linkCredentials(USER_ID, "user@example.com", "s3cret"))
+            .thenReturn(com.shopmate.domain.model.PicnicLinkState.LINKED);
+
         var response = controller.linkPicnicCredentials(
             new PicnicCredentialsRequest("user@example.com", "s3cret"));
 
-        assertThat(response.getStatusCode().value()).isEqualTo(204);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody().getStatus())
+            .isEqualTo(com.shopmate.generated.model.PicnicLinkState.LINKED);
         verify(picnicExportUseCase).linkCredentials(USER_ID, "user@example.com", "s3cret");
+    }
+
+    @Test
+    void linkPicnicCredentialsSurfacesAPendingSecondFactor() {
+        // The frontend switches to the code-entry step off this value alone, so collapsing it
+        // to "linked" would strand the user on a form that cannot succeed.
+        when(picnicExportUseCase.linkCredentials(USER_ID, "user@example.com", "s3cret"))
+            .thenReturn(com.shopmate.domain.model.PicnicLinkState.PENDING_SECOND_FACTOR);
+
+        var response = controller.linkPicnicCredentials(
+            new PicnicCredentialsRequest("user@example.com", "s3cret"));
+
+        assertThat(response.getBody().getStatus())
+            .isEqualTo(com.shopmate.generated.model.PicnicLinkState.PENDING_SECOND_FACTOR);
+    }
+
+    @Test
+    void secondFactorEndpointsDelegateAndReturn204() {
+        var sent = controller.sendPicnicSecondFactor();
+        var verified = controller.verifyPicnicSecondFactor(
+            new com.shopmate.generated.model.PicnicSecondFactorRequest("252000"));
+
+        assertThat(sent.getStatusCode().value()).isEqualTo(204);
+        assertThat(verified.getStatusCode().value()).isEqualTo(204);
+        verify(picnicExportUseCase).resendSecondFactor(USER_ID);
+        verify(picnicExportUseCase).verifySecondFactor(USER_ID, "252000");
     }
 
     @Test
@@ -63,7 +94,7 @@ class PicnicExportControllerTest {
     @Test
     void getPicnicCredentialsStatusMapsLinkedStatusWithEmail() {
         when(picnicExportUseCase.getCredentialsStatus(USER_ID))
-            .thenReturn(new PicnicLinkStatus(true, "user@example.com"));
+            .thenReturn(new PicnicLinkStatus(true, "user@example.com", com.shopmate.domain.model.PicnicLinkState.LINKED));
 
         var response = controller.getPicnicCredentialsStatus();
 
@@ -75,7 +106,7 @@ class PicnicExportControllerTest {
     @Test
     void getPicnicCredentialsStatusMapsUnlinkedStatusWithNullEmail() {
         when(picnicExportUseCase.getCredentialsStatus(USER_ID))
-            .thenReturn(new PicnicLinkStatus(false, null));
+            .thenReturn(PicnicLinkStatus.notLinked());
 
         var response = controller.getPicnicCredentialsStatus();
 

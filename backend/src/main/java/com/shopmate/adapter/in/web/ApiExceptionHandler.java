@@ -11,6 +11,8 @@ import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.NoGroupException;
 import com.shopmate.domain.model.PicnicCredentialsMissingException;
 import com.shopmate.domain.model.PicnicLoginFailedException;
+import com.shopmate.domain.model.PicnicSecondFactorRequiredException;
+import com.shopmate.domain.model.PicnicSessionExpiredException;
 import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.generated.model.ApiError;
@@ -101,6 +103,21 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handlePicnicLoginFailed(PicnicLoginFailedException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ApiError("PICNIC_LOGIN_FAILED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicSecondFactorRequiredException.class)
+    public ResponseEntity<ApiError> handlePicnicSecondFactorRequired(PicnicSecondFactorRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_SECOND_FACTOR_REQUIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicSessionExpiredException.class)
+    public ResponseEntity<ApiError> handlePicnicSessionExpired(PicnicSessionExpiredException ex) {
+        // Distinct from PICNIC_UNAVAILABLE on purpose: waiting fixes an outage, but only
+        // re-linking fixes this, and the frontend has to send the user somewhere different.
+        log.warn("Picnic refused a stored session: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_SESSION_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(PicnicUnavailableException.class)

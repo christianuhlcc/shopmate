@@ -4,6 +4,7 @@ import com.shopmate.domain.model.ArticleSuggestion;
 import com.shopmate.domain.model.ExportFailure;
 import com.shopmate.domain.model.ExportResult;
 import com.shopmate.domain.model.ItemSuggestion;
+import com.shopmate.domain.model.PicnicLinkState;
 import com.shopmate.domain.model.PicnicLinkStatus;
 import com.shopmate.domain.port.in.PicnicExportUseCase;
 import com.shopmate.generated.api.PicnicExportApi;
@@ -12,6 +13,8 @@ import com.shopmate.generated.model.ExportSuggestionsResponse;
 import com.shopmate.generated.model.ItemSuggestions;
 import com.shopmate.generated.model.PicnicCredentialsRequest;
 import com.shopmate.generated.model.PicnicCredentialsStatus;
+import com.shopmate.generated.model.PicnicLinkResult;
+import com.shopmate.generated.model.PicnicSecondFactorRequest;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -39,13 +42,28 @@ public class PicnicExportController implements PicnicExportApi {
     }
 
     @Override
-    public ResponseEntity<Void> linkPicnicCredentials(
+    public ResponseEntity<PicnicLinkResult> linkPicnicCredentials(
             @Valid @RequestBody PicnicCredentialsRequest picnicCredentialsRequest) {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
-        picnicExportUseCase.linkCredentials(
+        PicnicLinkState state = picnicExportUseCase.linkCredentials(
                 currentUserId,
                 picnicCredentialsRequest.getEmail(),
                 picnicCredentialsRequest.getPassword());
+        return ResponseEntity.ok(new PicnicLinkResult(toDto(state)));
+    }
+
+    @Override
+    public ResponseEntity<Void> sendPicnicSecondFactor() {
+        picnicExportUseCase.resendSecondFactor(securityContextHelper.getCurrentUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<Void> verifyPicnicSecondFactor(
+            @Valid @RequestBody PicnicSecondFactorRequest picnicSecondFactorRequest) {
+        picnicExportUseCase.verifySecondFactor(
+                securityContextHelper.getCurrentUserId(),
+                picnicSecondFactorRequest.getCode());
         return ResponseEntity.noContent().build();
     }
 
@@ -60,7 +78,9 @@ public class PicnicExportController implements PicnicExportApi {
     public ResponseEntity<PicnicCredentialsStatus> getPicnicCredentialsStatus() {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
         PicnicLinkStatus status = picnicExportUseCase.getCredentialsStatus(currentUserId);
-        return ResponseEntity.ok(new PicnicCredentialsStatus(status.linked()).email(status.email()));
+        return ResponseEntity.ok(new PicnicCredentialsStatus(status.linked())
+                .email(status.email())
+                .status(status.state() == null ? null : toDto(status.state())));
     }
 
     @Override
@@ -86,6 +106,10 @@ public class PicnicExportController implements PicnicExportApi {
     }
 
     // --- Mapping helpers ---
+
+    private static com.shopmate.generated.model.PicnicLinkState toDto(PicnicLinkState state) {
+        return com.shopmate.generated.model.PicnicLinkState.valueOf(state.name());
+    }
 
     private ItemSuggestions toDto(ItemSuggestion suggestion) {
         List<com.shopmate.generated.model.ArticleSuggestion> articleDtos = suggestion.suggestions().stream()
