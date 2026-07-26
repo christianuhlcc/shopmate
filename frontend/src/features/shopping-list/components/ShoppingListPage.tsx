@@ -138,7 +138,10 @@ export function ShoppingListPage() {
         />
       )}
       {activeSheet === 'credentials' && (
-        <PicnicCredentialsSheet onClose={() => setActiveSheet(null)} />
+        <PicnicCredentialsSheet
+          onClose={() => setActiveSheet(null)}
+          onLinked={() => setActiveSheet('export')}
+        />
       )}
     </div>
   )

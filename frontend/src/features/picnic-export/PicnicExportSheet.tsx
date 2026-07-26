@@ -16,7 +16,25 @@ interface PicnicExportSheetProps {
 type Step = 'loading' | 'error' | 'picking' | 'submitting' | 'result'
 
 const CREDENTIALS_MISSING_MESSAGE = 'Link a Picnic account to export this list.'
+const SECOND_FACTOR_MESSAGE = 'Finish linking your Picnic account — it still needs the SMS code.'
+const SESSION_EXPIRED_MESSAGE = 'Your Picnic session has expired. Link your account again to keep exporting.'
 const GENERIC_ERROR = "Picnic isn't available right now — try again later."
+
+/**
+ * Three different failures all mean "the user must go to the credentials sheet",
+ * and none of them is fixed by retrying: nothing is linked, linking was never
+ * finished, or the stored session died. Picnic's 2FA cannot be re-cleared without
+ * the user, so an expired session is a dead end here, not a transient error.
+ */
+const RELINK_MESSAGES: Record<string, string> = {
+  PICNIC_CREDENTIALS_MISSING: CREDENTIALS_MISSING_MESSAGE,
+  PICNIC_SECOND_FACTOR_REQUIRED: SECOND_FACTOR_MESSAGE,
+  PICNIC_SESSION_EXPIRED: SESSION_EXPIRED_MESSAGE,
+}
+
+function relinkMessageFor(code: string | undefined): string | null {
+  return code === undefined ? null : (RELINK_MESSAGES[code] ?? null)
+}
 
 function formatPrice(priceCents?: number | null): string | null {
   if (priceCents === undefined || priceCents === null) return null
@@ -35,7 +53,7 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
   const [step, setStep] = useState<Step>('loading')
   const [items, setItems] = useState<ItemSuggestions[]>([])
   const [selections, setSelections] = useState<Record<string, string | undefined>>({})
-  const [credentialsMissing, setCredentialsMissing] = useState(false)
+  const [relinkMessage, setRelinkMessage] = useState<string | null>(null)
   const [result, setResult] = useState<ExportResult | null>(null)
 
   useEffect(() => {
@@ -45,7 +63,7 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
       .then(({ data, error: apiError }) => {
         if (cancelled) return
         if (apiError || !data) {
-          setCredentialsMissing(apiError?.code === 'PICNIC_CREDENTIALS_MISSING')
+          setRelinkMessage(relinkMessageFor(apiError?.code))
           setStep('error')
           return
         }
@@ -59,7 +77,7 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
       })
       .catch(() => {
         if (cancelled) return
-        setCredentialsMissing(false)
+        setRelinkMessage(null)
         setStep('error')
       })
     return () => {
@@ -87,7 +105,7 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
       },
     })
     if (apiError || !data) {
-      setCredentialsMissing(apiError?.code === 'PICNIC_CREDENTIALS_MISSING')
+      setRelinkMessage(relinkMessageFor(apiError?.code))
       setStep('error')
       return
     }
@@ -131,9 +149,9 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
         )}
 
         {step === 'error' &&
-          (credentialsMissing ? (
+          (relinkMessage ? (
             <div className="mt-4">
-              <p className="text-body text-ink-soft mb-4">{CREDENTIALS_MISSING_MESSAGE}</p>
+              <p className="text-body text-ink-soft mb-4">{relinkMessage}</p>
               <button
                 type="button"
                 onClick={onNeedsCredentials}

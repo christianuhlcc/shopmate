@@ -95,6 +95,40 @@ describe('PicnicExportSheet', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('routes an expired session to re-linking rather than showing a retryable error', async () => {
+    // Picnic's 2FA cannot be re-cleared without the user, so an expired session is a
+    // dead end here — offering "try again" would loop them forever.
+    mockedApi.POST.mockResolvedValueOnce({
+      data: undefined,
+      error: { code: 'PICNIC_SESSION_EXPIRED', message: 'gone', timestamp: '2026-07-26T00:00:00Z' },
+    })
+    const onNeedsCredentials = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <PicnicExportSheet listId="list-1" onClose={vi.fn()} onNeedsCredentials={onNeedsCredentials} />,
+    )
+
+    expect(await screen.findByText(/your picnic session has expired/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /link picnic account/i }))
+    expect(onNeedsCredentials).toHaveBeenCalled()
+  })
+
+  it('sends a half-finished link back to the credentials sheet to finish 2FA', async () => {
+    mockedApi.POST.mockResolvedValueOnce({
+      data: undefined,
+      error: {
+        code: 'PICNIC_SECOND_FACTOR_REQUIRED',
+        message: 'pending',
+        timestamp: '2026-07-26T00:00:00Z',
+      },
+    })
+    render(
+      <PicnicExportSheet listId="list-1" onClose={vi.fn()} onNeedsCredentials={vi.fn()} />,
+    )
+
+    expect(await screen.findByText(/still needs the sms code/i)).toBeInTheDocument()
+  })
+
   it('renders a product image when a suggestion has an imageUrl', async () => {
     mockedApi.POST.mockResolvedValueOnce({ data: suggestions, error: undefined })
     const { container } = render(
