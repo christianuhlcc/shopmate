@@ -8,6 +8,8 @@ import com.shopmate.domain.model.PicnicCredentials;
 import com.shopmate.domain.model.PicnicLoginFailedException;
 import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.port.out.PicnicClientPort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -45,7 +47,34 @@ public class PicnicHttpAdapter implements PicnicClientPort {
     private static final String IMAGE_URL_TEMPLATE =
         "https://storefront-prod.de.picnicinternational.com/static/images/%s/medium.png";
 
+    // Verified against the live DE storefront on 2026-07-26: the flat "/search" endpoint the
+    // community wrappers document is GONE — it 404s on api/15, /17 and /19 alike, while
+    // "/pages/search-page-results" answers 401 (i.e. exists, wants auth) on the same versions.
+    // Picnic moved search behind its page-block API; this is the endpoint that still resolves.
+    //
+    // KNOWN BROKEN (2026-07-26): with a real, working account this still answers 403 with an
+    // empty body, even sending the agent/did headers below on both login and search. Login
+    // itself succeeds, so the credential path is fine — search specifically is refused. Picnic
+    // appears to bind the session to a device registration we don't perform. Everything past
+    // this call (suggestions, add-to-cart) is therefore unverified against the live API; the
+    // response *shape* the flattener below expects is still the community-documented one and
+    // has never been seen from the real endpoint. See docs/plans/picnic-export.md §6.
+    private static final String SEARCH_PATH = "/pages/search-page-results?search_term=";
+
+    // Header set mirrored from the maintained Node reference client (MRVDH/picnic-api,
+    // src/http-client.ts) — Picnic's page endpoints 500 or 403 without them. The agent string
+    // encodes an app version; a stale one is a plausible rejection cause, so it is kept current
+    // with that client rather than frozen. Accept-Language is fixed to "de": Germany-only scope
+    // per ADR-0014.
+    private static final String USER_AGENT = "okhttp/4.9.0";
+    private static final String CONTENT_TYPE = "application/json; charset=UTF-8";
+    private static final String ACCEPT_LANGUAGE = "de";
+    private static final String PICNIC_AGENT = "30100;1.236.1-15553;";
+    private static final String PICNIC_DID = "3C417201548B2E3B";
+
     private static final int PICNIC_CLIENT_ID = 30100;
+
+    private static final Logger log = LoggerFactory.getLogger(PicnicHttpAdapter.class);
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper;
@@ -69,9 +98,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
         String token = login(credentials);
 
         String encodedTerm = URLEncoder.encode(term, StandardCharsets.UTF_8);
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(baseUrl + "/search?search_term=" + encodedTerm))
-            .header("x-picnic-auth", token)
+        HttpRequest request = authedRequest(baseUrl + SEARCH_PATH + encodedTerm, token)
             .GET()
             .build();
 
@@ -97,10 +124,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
         String token = login(credentials);
 
         String requestBody = writeJson(Map.of("product_id", articleId, "count", count));
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(baseUrl + "/cart/add_product"))
-            .header("Content-Type", "application/json")
-            .header("x-picnic-auth", token)
+        HttpRequest request = authedRequest(baseUrl + "/cart/add_product", token)
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
 
@@ -120,9 +144,9 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             "secret", credentials.passwordMd5Hex(),
             "client_id", PICNIC_CLIENT_ID));
 
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(baseUrl + "/user/login"))
-            .header("Content-Type", "application/json")
+        // Deliberately NOT sending the x-picnic-agent/did headers here: the reference client
+        // omits them at login and only adds them to authenticated calls.
+        HttpRequest request = baseRequest(baseUrl + "/user/login")
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
 
@@ -144,8 +168,31 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             throw new PicnicUnavailableException("Picnic login failed with unexpected status " + status);
         }
 
+        // Picnic hands out an auth key even when the account still owes a second factor; that key
+        // is then refused (403) by every real endpoint. ADR-0014 never considered 2FA, and this
+        // is indistinguishable from other 403s at the call site, so flag it here.
+        if (body != null && body.path("second_factor_authentication_required").asBoolean(false)) {
+            log.warn("Picnic login returned second_factor_authentication_required=true — the "
+                + "auth key will be refused by search/cart until 2FA is completed.");
+        }
+
         return response.headers().firstValue("x-picnic-auth")
             .orElseThrow(() -> new PicnicUnavailableException("Picnic login response is missing the x-picnic-auth header"));
+    }
+
+    private static HttpRequest.Builder baseRequest(String uri) {
+        return HttpRequest.newBuilder()
+            .uri(URI.create(uri))
+            .header("User-Agent", USER_AGENT)
+            .header("Content-Type", CONTENT_TYPE)
+            .header("Accept-Language", ACCEPT_LANGUAGE);
+    }
+
+    private static HttpRequest.Builder authedRequest(String uri, String token) {
+        return baseRequest(uri)
+            .header("x-picnic-auth", token)
+            .header("x-picnic-agent", PICNIC_AGENT)
+            .header("x-picnic-did", PICNIC_DID);
     }
 
     private HttpResponse<String> send(HttpRequest request) {
@@ -186,14 +233,25 @@ public class PicnicHttpAdapter implements PicnicClientPort {
         return body != null && body.isObject() && (body.has("error") || body.has("error_code"));
     }
 
+    /**
+     * Verified against the live DE storefront (2026-07-26): a rejected login answers 401 with
+     * {@code {"error":{"code":"AUTH_INVALID_CRED","message":"Invalid credentials","details":{}}}},
+     * i.e. "error" is an object, not a string. Reading it with asText() yields "" on a container
+     * node, so the nested "code"/"message" are unwrapped explicitly. The flat string and
+     * "error_code" shapes reported by community clients are still handled as fallbacks.
+     */
     private static String errorMessage(JsonNode body) {
         if (body.has("error_code")) {
             return body.get("error_code").asText();
         }
-        if (body.has("error")) {
-            return body.get("error").asText();
+        // Non-null: hasErrorIndicator only lets a body through if it has "error_code" (returned
+        // above) or "error".
+        JsonNode error = body.get("error");
+        if (error.isObject()) {
+            JsonNode code = error.get("code");
+            return code != null ? code.asText() : "unknown error";
         }
-        return "unknown error";
+        return error.asText();
     }
 
     /**

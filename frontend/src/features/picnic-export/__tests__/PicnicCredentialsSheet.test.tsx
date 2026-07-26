@@ -98,6 +98,27 @@ describe('PicnicCredentialsSheet', () => {
     expect(await screen.findByText('me@example.com')).toBeInTheDocument()
   })
 
+  it('submitting while Picnic is down shows the outage message, not the wrong-password one', async () => {
+    mockedApi.GET.mockResolvedValue({ data: { linked: false }, error: undefined })
+    mockedApi.PUT.mockResolvedValue({
+      data: undefined,
+      error: { code: 'PICNIC_UNAVAILABLE', message: 'down' },
+    })
+    const user = userEvent.setup()
+    render(<PicnicCredentialsSheet onClose={vi.fn()} />)
+
+    await screen.findByLabelText(/email/i)
+    await user.type(screen.getByLabelText(/email/i), 'me@example.com')
+    await user.type(screen.getByLabelText(/password/i), 'hunter2')
+    await user.click(screen.getByRole('button', { name: /link account/i }))
+
+    expect(
+      await screen.findByText(/picnic isn't available right now/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/check your email and password/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /link account/i })).not.toBeDisabled()
+  })
+
   it('submitting with a generic error shows a generic message', async () => {
     mockedApi.GET.mockResolvedValue({ data: { linked: false }, error: undefined })
     mockedApi.PUT.mockResolvedValue({

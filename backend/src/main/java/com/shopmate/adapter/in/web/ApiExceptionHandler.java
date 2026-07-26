@@ -105,6 +105,10 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(PicnicUnavailableException.class)
     public ResponseEntity<ApiError> handlePicnicUnavailable(PicnicUnavailableException ex) {
+        // Picnic's API is unofficial and can change under us without notice (ADR-0014), so an
+        // outage here is a signal about *them*, not a client mistake — it must leave a trace.
+        // Logged at warn, not error: a third party being down is not our alert-worthy failure.
+        log.warn("Picnic is unavailable: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiError("PICNIC_UNAVAILABLE", ex.getMessage(), OffsetDateTime.now()));
     }

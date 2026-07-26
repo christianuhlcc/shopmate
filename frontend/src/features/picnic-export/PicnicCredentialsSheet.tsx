@@ -11,6 +11,18 @@ interface PicnicCredentialsSheetProps {
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.'
 const LOGIN_FAILED_ERROR = 'Picnic rejected these credentials — check your email and password.'
+const UNAVAILABLE_ERROR = "Picnic isn't available right now — try again later."
+
+/**
+ * A Picnic outage and a wrong password both fail the link, but the user's next
+ * move differs — retype the password vs. come back later — so they must not
+ * share the generic copy.
+ */
+function submitErrorFor(code: string | undefined): string {
+  if (code === 'PICNIC_LOGIN_FAILED') return LOGIN_FAILED_ERROR
+  if (code === 'PICNIC_UNAVAILABLE') return UNAVAILABLE_ERROR
+  return GENERIC_ERROR
+}
 
 /**
  * Bottom sheet for linking/unlinking the caller's Picnic account. Reuses the
@@ -62,7 +74,7 @@ export function PicnicCredentialsSheet({ onClose }: PicnicCredentialsSheetProps)
     setIsSubmitting(false)
 
     if (apiError) {
-      setSubmitError(apiError.code === 'PICNIC_LOGIN_FAILED' ? LOGIN_FAILED_ERROR : GENERIC_ERROR)
+      setSubmitError(submitErrorFor(apiError.code))
       return
     }
 

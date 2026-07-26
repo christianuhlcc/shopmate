@@ -73,6 +73,35 @@ class PicnicHttpAdapterTest {
     }
 
     @Test
+    void verifyLoginThrowsLoginFailedOnRealStorefrontErrorShape() {
+        // Captured verbatim from the live DE storefront on 2026-07-26 during end-to-end
+        // verification: "error" is an OBJECT carrying code/message, not a string. asText() on a
+        // container node returns "", so an unwrapping regression here would silently blank out
+        // the reason in the exception message.
+        wireMockServer.stubFor(post(urlPathEqualTo("/user/login"))
+            .willReturn(aResponse().withStatus(401)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":{\"code\":\"AUTH_INVALID_CRED\","
+                    + "\"message\":\"Invalid credentials\",\"details\":{}}}")));
+
+        assertThatThrownBy(() -> adapter.verifyLogin(CREDENTIALS))
+            .isInstanceOf(PicnicLoginFailedException.class)
+            .hasMessageContaining("AUTH_INVALID_CRED");
+    }
+
+    @Test
+    void verifyLoginThrowsLoginFailedWhenNestedErrorObjectHasNoCode() {
+        wireMockServer.stubFor(post(urlPathEqualTo("/user/login"))
+            .willReturn(aResponse().withStatus(401)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":{\"message\":\"Invalid credentials\"}}")));
+
+        assertThatThrownBy(() -> adapter.verifyLogin(CREDENTIALS))
+            .isInstanceOf(PicnicLoginFailedException.class)
+            .hasMessageContaining("unknown error");
+    }
+
+    @Test
     void verifyLoginThrowsUnavailableOn5xx() {
         wireMockServer.stubFor(post(urlPathEqualTo("/user/login"))
             .willReturn(aResponse().withStatus(500)));
@@ -158,7 +187,7 @@ class PicnicHttpAdapterTest {
             ]
             """;
 
-        wireMockServer.stubFor(get(urlPathEqualTo("/search"))
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
             .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody(searchResponse)));
@@ -181,6 +210,40 @@ class PicnicHttpAdapterTest {
     }
 
     @Test
+    void searchArticlesSurvivesWrongTypesAndNullsInTheResponse() {
+        // ADR-0014's whole premise is that Picnic's shape is unofficial and can drift. Every leaf
+        // field here has the WRONG json type (or is null) — the flattener must skip what it can't
+        // read and still return the entries it can, never throw.
+        stubSuccessfulLogin();
+
+        String hostileResponse = """
+            [
+              null,
+              {"id": 12345, "name": "Numeric id — not a product node"},
+              {"id": "20001", "name": "Wrong-typed fields",
+               "unit_quantity": 5, "display_price": "1,29", "image_id": 99},
+              {"id": "20002", "name": "Items is not an array", "items": "nope"}
+            ]
+            """;
+
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody(hostileResponse)));
+
+        List<ArticleSuggestion> results = adapter.searchArticles(CREDENTIALS, "Milch");
+
+        // The null element and the numeric-id node are skipped; the other two still come through.
+        assertThat(results).extracting(ArticleSuggestion::id).containsExactly("20001", "20002");
+
+        ArticleSuggestion wrongTypes = results.get(0);
+        assertThat(wrongTypes.name()).isEqualTo("Wrong-typed fields");
+        assertThat(wrongTypes.unit()).isNull();
+        assertThat(wrongTypes.priceCents()).isNull();
+        assertThat(wrongTypes.imageUrl()).isNull();
+    }
+
+    @Test
     void searchArticlesCapsResultsAtTwenty() {
         stubSuccessfulLogin();
 
@@ -191,7 +254,7 @@ class PicnicHttpAdapterTest {
         }
         flatArray.append("]");
 
-        wireMockServer.stubFor(get(urlPathEqualTo("/search"))
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
             .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody(flatArray.toString())));
@@ -213,7 +276,7 @@ class PicnicHttpAdapterTest {
             ["unexpected scalar", 42, {"id": "1", "name": "Real Item"}]
             """;
 
-        wireMockServer.stubFor(get(urlPathEqualTo("/search"))
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
             .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody(searchResponse)));
@@ -228,7 +291,7 @@ class PicnicHttpAdapterTest {
     void searchArticlesThrowsUnavailableOn5xx() {
         stubSuccessfulLogin();
 
-        wireMockServer.stubFor(get(urlPathEqualTo("/search"))
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
             .willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> adapter.searchArticles(CREDENTIALS, "Milch"))
@@ -239,7 +302,7 @@ class PicnicHttpAdapterTest {
     void searchArticlesThrowsUnavailableOnMalformedJsonBody() {
         stubSuccessfulLogin();
 
-        wireMockServer.stubFor(get(urlPathEqualTo("/search"))
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
             .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody("this is not { json")));
