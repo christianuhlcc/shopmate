@@ -1,10 +1,11 @@
 # Picnic Export — Implementation Plan
 
-**Status:** Phases A, B, C, D1 done and pushed to
-`claude/picnic-app-export-odrgzg` (backend, frontend, config/docs plumbing —
-all coverage gates green, `tsc` clean). **D2 (manual end-to-end verification
-against a real Picnic account) is the only remaining step — see §6, run it
-locally.** No PR has been opened yet.
+**Status:** Phases A, B, C, D1 done. **D2 ran on 2026-07-26 against Docker and a
+real Picnic account and FAILED at step 5 — the feature cannot work as designed.**
+Picnic requires two-factor auth: login returns an auth key, but that key is
+refused (403) by search and cart until a second factor is verified. ADR-0014
+never considered 2FA. See §6 "D2 results" for the evidence and what it costs.
+Steps 1–4 and 9 passed. No PR has been opened yet.
 
 ## Context
 
@@ -363,6 +364,61 @@ whole section were skipped there for that reason). Run it on your machine.
    `shopmate.picnic.base-url`) to an unreachable address for the `backend`
    service and retry suggestions/export — expect a friendly "Picnic isn't
    available right now" banner, not a crash. Revert the override afterward.
+
+### D2 results (run 2026-07-26, Docker + real Picnic account)
+
+**Passed:** step 1 (stack clean, Flyway applied V6), 2, 3 (routes to the
+credentials sheet, beta badge visible), 4 (wrong password → inline
+"Picnic rejected these credentials", `picnic_credentials` stays empty — the
+fail-fast-before-persist path works), and 9 (unreachable Picnic → inline
+banner, no crash).
+
+**Failed: step 5 onwards.** Steps 6, 7 and 8 were never reachable.
+
+What was verified directly against `storefront-prod.de.picnicinternational.com`:
+
+1. `POST /api/15/user/login` is alive and the wire format in §3 is correct —
+   bad credentials answer `401 {"error":{"code":"AUTH_INVALID_CRED",...}}`.
+   Note `error` is an **object**, not the string the code assumed; fixed.
+2. `GET /api/15/search?search_term=` — **404 on api/15, /17 and /19 alike.**
+   The flat search endpoint the community wrappers documented is gone. The
+   live replacement is `GET /pages/search-page-results?search_term=`, which
+   answers 401 unauthenticated (confirmed against MRVDH/picnic-api
+   `src/domains/catalog/service.ts`). Fixed in `PicnicHttpAdapter`.
+3. With the correct path plus the reference client's full header set
+   (`User-Agent: okhttp/4.9.0`, `Accept-Language: de`, `x-picnic-agent`,
+   `x-picnic-did`), search still answers **403 with an empty body**.
+4. Root cause: the login response carries
+   **`second_factor_authentication_required: true`**. Picnic issues an auth
+   key anyway, so `verifyLogin` sees a success and we persist credentials —
+   but that key is refused by every real endpoint. The adapter now logs this
+   at warn, which is how it was found.
+
+**What this costs.** Two "settled, do not reopen" decisions in this plan no
+longer hold:
+
+- *"No Picnic session caching — each export logs in fresh."* Untenable. If
+  every export re-logs in and every login needs a fresh SMS code, the feature
+  is unusable. The auth key (and the device id it is bound to) has to be
+  persisted, which changes the storage model and its security review.
+- *"Credentials are per-user, email + password only."* Linking now needs a
+  2FA round trip: `POST /user/2fa/generate {channel:"SMS"}` →
+  `POST /user/2fa/verify {code}` (the reference client exposes both). That is
+  a new contract, a new sheet state, and a new persisted secret.
+
+**Also unverified, and still unverifiable:** every response *shape* past
+login. The flattener in `PicnicHttpAdapter` still expects the
+community-documented `/search` shape (`items` nesting, `unit_quantity`,
+`display_price`, `image_id`) and has never seen a real
+`search-page-results` body, which is a page-block structure and is very
+unlikely to match. The image URL template, however, is now corroborated:
+the reference client builds `{base}/static/images/{id}/{size}.png`, which is
+what the code already does.
+
+**Recommendation:** do not open a PR to ship this as-is. It would ship a
+feature that cannot succeed for any 2FA-enabled account, and 2FA is not
+optional on Picnic accounts that have it enabled. Either extend ADR-0014 to
+cover 2FA + session persistence, or park the branch.
 
 ### If something's off
 
