@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { useShoppingList } from '../hooks/useShoppingList'
 import { ShoppingListPage } from '../components/ShoppingListPage'
@@ -7,6 +8,25 @@ import type { ShoppingItem } from '../utils/lwwMerge'
 
 vi.mock('../hooks/useShoppingList', () => ({
   useShoppingList: vi.fn(),
+}))
+
+// The export sheet fetches suggestions and the credentials sheet fetches
+// link status via apiClient as soon as they mount — mocked out here so this
+// test only proves the header wiring, not the sheets' own behavior (already
+// covered by PicnicExportSheet.test.tsx / PicnicCredentialsSheet.test.tsx).
+vi.mock('../../picnic-export/PicnicExportSheet', () => ({
+  PicnicExportSheet: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Export to Picnic sheet">
+      <button onClick={onClose}>Close export sheet</button>
+    </div>
+  ),
+}))
+vi.mock('../../picnic-export/PicnicCredentialsSheet', () => ({
+  PicnicCredentialsSheet: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Picnic credentials sheet">
+      <button onClick={onClose}>Close credentials sheet</button>
+    </div>
+  ),
 }))
 
 const mockedHook = vi.mocked(useShoppingList)
@@ -74,5 +94,15 @@ describe('ShoppingListPage', () => {
     renderPage()
     expect(screen.getByText('Groceries')).toBeInTheDocument()
     expect(screen.getByText('Milk')).toBeInTheDocument()
+  })
+
+  it('opens the Picnic export sheet from the header button', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    expect(screen.queryByRole('dialog', { name: /export to picnic sheet/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /export to picnic/i }))
+    expect(screen.getByRole('dialog', { name: /export to picnic sheet/i })).toBeInTheDocument()
   })
 })
