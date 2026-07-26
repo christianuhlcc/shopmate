@@ -1,6 +1,7 @@
 # ADR-0014: Picnic export (beta) — Java re-implementation of the unofficial API, per-item top-5 picker
 
-Date: 2026-07-26 · Status: Accepted
+Date: 2026-07-26 · Status: Accepted, amended 2026-07-26 (see
+[Amendment: second-factor authentication](#amendment-2026-07-26-second-factor-authentication))
 
 ## Context
 
@@ -96,22 +97,70 @@ out of scope here and would be its own ADR.
   (delivery address, payment method); group membership (ADR-0013) governs
   list access, not who owns which Picnic login. Each group member who wants
   to export links their own account.
-- **Credential storage:** email + MD5(password) in a new
-  `picnic_credentials(user_id PK/FK, email, password_md5, ...)` table. The
-  MD5 digest is Picnic's own login wire format (from the reference clients),
-  not a security choice we're making — it functions as a bearer credential
-  for Picnic's API, so it's encrypted at rest with a new
-  `PICNIC_CREDENTIAL_ENC_KEY` secret (env var only, alongside
-  `JWT_SECRET`/`GOOGLE_CLIENT_SECRET` per ADR-0007). The plaintext password
-  is hashed on receipt and never persisted or logged.
+- **Credential storage:** ~~email + MD5(password)~~ **superseded by the
+  amendment below — the stored secret is the Picnic session key, not the
+  password digest.** Unchanged: whatever is stored is encrypted at rest with
+  a `PICNIC_CREDENTIAL_ENC_KEY` secret (env var only, alongside
+  `JWT_SECRET`/`GOOGLE_CLIENT_SECRET` per ADR-0007), and the plaintext
+  password is never persisted or logged.
 - **Contract-first as usual (ADR-0004):** new endpoints
   (`POST /api/lists/{listId}/picnic/suggestions`,
   `POST /api/lists/{listId}/picnic/export`,
   `PUT/DELETE /api/users/me/picnic-credentials`) are added to
   `api/openapi.yaml` first; controllers implement the generated interfaces.
-- **No session caching.** Each export logs in fresh. This is a low-frequency,
-  user-initiated action, not a hot path — trading a redundant login call for
-  not having to build token refresh/expiry handling in the beta.
+- **No session caching.** ~~Each export logs in fresh.~~ **Superseded by the
+  amendment below: fresh logins are impossible without user interaction, so
+  the session must be persisted.**
+
+## Amendment (2026-07-26): second-factor authentication
+
+End-to-end verification against a real account (the first time this design met
+the live API) found that **Picnic requires a second factor, and the original
+credential model cannot work.** Three facts, each verified directly:
+
+1. `POST /user/login` returns 200 with an auth key **and**
+   `second_factor_authentication_required: true`. The key it issues is
+   refused with 403 by every real endpoint. A login that "succeeds" therefore
+   proves nothing — the original design persisted credentials on exactly that
+   signal.
+2. The factor clears via `POST /user/2fa/generate {channel:"SMS"}` → 204,
+   then `POST /user/2fa/verify {otp}` → 204, which returns a **new** auth key.
+   That key works, and keeps working on later calls.
+3. **A subsequent login re-triggers 2FA anyway**, even reusing the same
+   device id. There is no "trusted device" escape: the only way to obtain a
+   working key is a human reading an SMS.
+
+Fact 3 is the decisive one. It means a stored password buys nothing — it
+cannot be exchanged for a usable session unattended — while remaining the
+most dangerous thing we could hold. So:
+
+- **The stored secret becomes the Picnic session key, not the password
+  digest.** `picnic_credentials` holds `(user_id, email, device_id,
+  auth_key_encrypted, status)`; the MD5 digest is not persisted at all. This
+  is a security *improvement*: a session key is revocable (`POST
+  /user/logout`) and scoped, whereas the digest is a password-equivalent that
+  grants full account access until the user changes their password.
+- **The device id (`x-picnic-did`) becomes per-user and persisted.** The
+  reference wrappers share one hardcoded constant; reusing it across all
+  ShopMate users would make our traffic trivially correlatable and let one
+  abusive user get the identifier blocked for everyone. Generate one per
+  account at link time.
+- **Linking becomes a two-step flow** (password → SMS code), so it needs a
+  `SECOND_FACTOR_REQUIRED` state in the contract and a code-entry step in the
+  sheet. The provisional key from step 1 is persisted with a pending status,
+  because `/user/2fa/verify` needs it and a backend restart mid-link must not
+  strand the user.
+- **Session expiry becomes a user-visible event.** When the stored key is
+  refused there is no silent recovery: the contract needs a distinct
+  `PICNIC_SESSION_EXPIRED` error so the frontend can route to re-linking
+  rather than showing a generic failure.
+
+Also corrected while verifying: `GET /search` no longer exists (404 on api/15,
+/17 and /19); the live endpoint is `GET /pages/search-page-results`, which
+returns a page-block tree rather than a product list. Product data itself is
+unchanged from what this ADR assumed — the mapped fields are all present and
+correct. These are wire-level details, recorded in
+`docs/plans/picnic-export.md`, not architecture.
 
 ## Consequences
 
@@ -119,10 +168,21 @@ out of scope here and would be its own ADR.
   rate-limit, or block an account with no warning. Failures surface as a
   single `502 GROCERY_EXPORT_UNAVAILABLE`-style error; the feature must read
   as "beta" in the UI so users don't treat it as guaranteed.
-- **A new class of standing secret exists per user** (the MD5 digest), not
-  just per deployment. It needs its own encryption-at-rest mechanism and key
-  management, which didn't exist before this ADR — this is new surface, not
-  a reuse of the JWT/OAuth machinery.
+- **A new class of standing secret exists per user** (post-amendment: the
+  Picnic session key), not just per deployment. It needs its own
+  encryption-at-rest mechanism and key management, which didn't exist before
+  this ADR — this is new surface, not a reuse of the JWT/OAuth machinery.
+- **Export can break on a schedule we don't control, and recovery needs the
+  user.** Because a refused session key can only be replaced by a human
+  reading an SMS, key lifetime directly sets how often people are interrupted.
+  If Picnic expires keys aggressively, the feature is annoying in a way no
+  amount of backend work can fix — that, not match quality, is now the main
+  thing to watch in the beta.
+- **A linked account is a second way to lose access to someone's groceries.**
+  Storing a live, working session key means a compromise of our database
+  yields usable Picnic sessions, not just credentials that still face 2FA.
+  Revocation (ours and Picnic's) matters more than it did under the original
+  design.
 - **Match quality is unproven.** The top-5 picker is the mitigation for
   ambiguity, not a solution to it; if hit rates are poor in practice, that's
   a signal to revisit before ever building the learned-mapping follow-up
