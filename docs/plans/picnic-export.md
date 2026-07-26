@@ -1,5 +1,11 @@
 # Picnic Export — Implementation Plan
 
+**Status:** Phases A, B, C, D1 done and pushed to
+`claude/picnic-app-export-odrgzg` (backend, frontend, config/docs plumbing —
+all coverage gates green, `tsc` clean). **D2 (manual end-to-end verification
+against a real Picnic account) is the only remaining step — see §6, run it
+locally.** No PR has been opened yet.
+
 ## Context
 
 Decision record: [ADR-0014](../adr/0014-picnic-export-beta.md) — read that
@@ -282,24 +288,97 @@ Final commit.
 
 ---
 
-## 6. End-to-end verification
+## 6. End-to-end verification (D2 — run this locally, not in a sandbox)
 
-1. Both coverage gates green (commands in §5 header).
-2. Link a Picnic account via the credentials sheet; `GET` status shows
-   `linked: true` with a masked email.
-3. Wrong password → 422 `PICNIC_LOGIN_FAILED` as an inline form error;
-   confirm nothing was written to `picnic_credentials` (DB check).
-4. Create a list with a few German items ("Milch", "Bananen", "Butter");
-   open the export sheet → suggestions load with up to 5 candidates each
-   (name/image/price).
-5. Confirm a mix of picks and skips → result summary shows correct
-   added/skipped counts; spot-check at least once that the items actually
-   land in the real Picnic cart (manual check in the Picnic app/site).
-6. Point the base URL at an unreachable host (or block egress) → 502
-   `PICNIC_UNAVAILABLE` renders as a friendly banner, no crash.
-7. Unlink credentials → row gone from `picnic_credentials`; suggestions call
-   now 422 `PICNIC_CREDENTIALS_MISSING`; frontend routes back to the
-   credentials sheet.
+This needs Docker and a real Picnic account, neither of which are available
+in the sandbox this feature was built in (backend Testcontainers ITs and this
+whole section were skipped there for that reason). Run it on your machine.
+
+### Prerequisites
+
+- `git checkout claude/picnic-app-export-odrgzg && git pull`.
+- Docker running locally (`docker compose up --build` needs it).
+- `.env` already exists locally with working `GOOGLE_CLIENT_ID`/`SECRET` and
+  `JWT_SECRET` from prior development — if not, copy `.env.example` to `.env`
+  and fill those in first (unrelated to this feature).
+- **New this feature:** set a real `PICNIC_CREDENTIAL_ENC_KEY` in `.env`
+  (generate one with `openssl rand -base64 32` — any length works, see the
+  comment above it in `.env.example`). If you skip this, the dev default is
+  used, which is fine for a local-only test but must never be used in prod.
+- A real Picnic account (NL/DE/BE) you're willing to log into and add real
+  items to a real cart with. **Use an account/cart you don't mind having
+  items added to** — step 5 below adds real products to a real Picnic cart.
+  Don't complete a real checkout/order as part of this test unless you mean
+  to.
+
+### Steps
+
+1. `docker compose up --build`. Confirm the stack comes up clean and Flyway
+   applies `V6__picnic_credentials.sql` with no errors
+   (`docker compose logs backend | grep -i flyway`).
+2. Log in via Google, land in a group with at least one list (create one if
+   needed), add a handful of real German grocery items to it (e.g. "Milch",
+   "Bananen", "Butter", "Vollkornbrot").
+3. Open that list, click the basket icon in the header ("Export to Picnic").
+   Since no Picnic account is linked yet, you should land on (or be routed
+   to) the **credentials sheet** — both sheets now show a small "Beta — uses
+   an unofficial Picnic API" badge next to the title; confirm it's visible
+   (this was a gap ADR-0014 called for and D1 just added).
+4. **Wrong-password check first:** enter your real Picnic email with a
+   deliberately wrong password. Expect an inline "Picnic rejected these
+   credentials" error, not a crash. Confirm nothing was persisted:
+   `docker compose exec postgres psql -U shopmate -d shopmate -c "select count(*) from picnic_credentials;"`
+   should be `0`.
+5. Now link with the **correct** password. Expect the sheet to switch to the
+   linked view. Click the export button again → suggestions should load,
+   showing up to 5 real Picnic products per item (name, and where available,
+   image/price/unit).
+   - **Important spot-check** (flagged by ADR-0014 as unverified
+     reverse-engineering): open browser devtools → Network, find the
+     `POST /api/lists/{listId}/picnic/suggestions` call, and separately check
+     the backend logs or add a temporary breakpoint/log in
+     `PicnicHttpAdapter.searchArticles` to see the **raw response Picnic's
+     `/search` endpoint actually returns**. Compare its real field names
+     (`unit_quantity`, `display_price`, `image_id`, the nested category
+     structure) against what `PicnicHttpAdapter` assumes. If real Picnic
+     data uses different field names or a different nesting than the code
+     expects, suggestions will silently come back with missing
+     name/price/image data (not a crash — the mapping is defensive) — note
+     the actual field names for a follow-up fix if they differ.
+   - Also check whether the image URLs actually resolve (open one in a new
+     tab) — the image URL template in the code is an explicit guess, flagged
+     in a code comment in `PicnicHttpAdapter`.
+6. Pick a mix: accept the default (top) suggestion for one item, change the
+   selection for another, explicitly skip at least one item, and confirm.
+   Check the result summary's added/skipped counts match your picks.
+7. **Ultimate check:** open the real Picnic app or picnic.app in a browser,
+   log into the same account, and confirm the picked products are actually
+   in the cart with the expected quantities.
+8. Unlink the Picnic account from the credentials sheet. Confirm the row is
+   gone (`select count(*) from picnic_credentials;` → `0` again) and that
+   opening the export sheet now routes back to the credentials prompt
+   (`PICNIC_CREDENTIALS_MISSING`).
+9. *(Optional, lower priority)* Outage path: temporarily override
+   `SHOPMATE_PICNIC_BASE_URL` (Spring relaxed-binding env var for
+   `shopmate.picnic.base-url`) to an unreachable address for the `backend`
+   service and retry suggestions/export — expect a friendly "Picnic isn't
+   available right now" banner, not a crash. Revert the override afterward.
+
+### If something's off
+
+This is explicitly a beta feature built against reverse-engineered behavior
+(ADR-0014) — a mismatch in step 5's spot-check is the expected kind of issue
+to find, not a sign the whole approach is broken. If you find field-name or
+image-URL drift, fix `PicnicHttpAdapter`'s parsing to match reality and add a
+regression case to `PicnicHttpAdapterTest` (WireMock stub with the *real*
+response shape you observed) rather than adjusting it blind — then re-run
+this checklist from step 5.
+
+### After D2 passes
+
+No PR exists yet for this branch. Once you're satisfied, open one manually
+(or ask Claude Code to) — the feature is one PR per the original brief, so
+everything from Phase A through D1 plus your D2 fixes (if any) ships together.
 
 ## Critical files
 

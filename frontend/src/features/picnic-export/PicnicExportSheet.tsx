@@ -115,6 +115,9 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
         <h2 id="picnic-export-sheet-title" className="text-title font-semibold text-ink mb-1">
           Export to Picnic
         </h2>
+        <span className="inline-block mb-3 text-label font-semibold text-honey-deep bg-marigold-tint rounded-full px-2 py-0.5">
+          Beta — uses an unofficial Picnic API
+        </span>
 
         {step === 'loading' && (
           <div role="status" aria-label="Loading suggestions" className="space-y-3 mt-4">

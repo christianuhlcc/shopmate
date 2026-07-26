@@ -98,6 +98,9 @@ export function PicnicCredentialsSheet({ onClose }: PicnicCredentialsSheetProps)
         >
           Picnic account
         </h2>
+        <span className="inline-block mb-3 text-label font-semibold text-honey-deep bg-marigold-tint rounded-full px-2 py-0.5">
+          Beta — uses an unofficial Picnic API
+        </span>
 
         {isLoading && (
           <div role="status" aria-label="Loading Picnic account status" className="space-y-2 mt-4">
