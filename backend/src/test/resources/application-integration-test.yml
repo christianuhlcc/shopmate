@@ -26,3 +26,5 @@ shopmate:
     secret: test-secret-value-that-is-32-chars!!
   frontend:
     base-url: http://localhost:3000
+  picnic:
+    credential-enc-key: test-encryption-key-for-integration-tests-only
