@@ -24,6 +24,8 @@ tags:
     description: Invite code issuance and redemption
   - name: Events
     description: Real-time SSE event streaming
+  - name: PicnicExport
+    description: Picnic grocery-export credential linking and per-list export
 
 servers:
   - url: /api
@@ -335,6 +337,122 @@ paths:
         "403":
           $ref: '#/components/responses/Forbidden'
 
+  /users/me/picnic-credentials:
+    put:
+      tags: [PicnicExport]
+      operationId: linkPicnicCredentials
+      summary: Link a Picnic account for grocery export
+      description: |
+        Verifies the credentials against Picnic before persisting anything.
+        If Picnic rejects the login, responds 422 with code PICNIC_LOGIN_FAILED
+        and nothing is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PicnicCredentialsRequest'
+      responses:
+        "204":
+          description: Credentials verified against Picnic and stored
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [PicnicExport]
+      operationId: unlinkPicnicCredentials
+      summary: Unlink the current user's Picnic account
+      responses:
+        "204":
+          description: Credentials removed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [PicnicExport]
+      operationId: getPicnicCredentialsStatus
+      summary: Get the current user's Picnic credential link status
+      responses:
+        "200":
+          description: Picnic credential link status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicCredentialsStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /lists/{listId}/picnic/suggestions:
+    post:
+      tags: [PicnicExport]
+      operationId: getPicnicExportSuggestions
+      summary: Get up to 5 Picnic article suggestions per active item on a list
+      description: |
+        Active items only (checked=false, deleted=false). Requires a linked
+        Picnic credential; if none is linked, responds 422 with code
+        PICNIC_CREDENTIALS_MISSING. If the Picnic API itself is unreachable,
+        responds 502 with code PICNIC_UNAVAILABLE. 403 also covers a
+        group-less caller (code NO_GROUP), same convention as other list
+        endpoints.
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        "200":
+          description: Per-item Picnic article suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportSuggestionsResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
+  /lists/{listId}/picnic/export:
+    post:
+      tags: [PicnicExport]
+      operationId: exportToPicnic
+      summary: Add confirmed article selections to the user's Picnic cart
+      description: |
+        Requires a linked Picnic credential; if none is linked, responds 422
+        with code PICNIC_CREDENTIALS_MISSING. If the Picnic API itself is
+        unreachable, responds 502 with code PICNIC_UNAVAILABLE. 403 also
+        covers a group-less caller (code NO_GROUP), same convention as other
+        list endpoints.
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        "200":
+          description: Export result summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResult'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -399,6 +517,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     UnprocessableEntity:
       description: Business rule violation (e.g. list is full, invite invalid/expired)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    BadGateway:
+      description: Upstream provider unavailable (e.g. Picnic API down or blocked)
       content:
         application/json:
           schema:
@@ -667,6 +791,123 @@ components:
         token:
           type: string
           description: Short-lived SSE token (15-min TTL, scoped to listId)
+
+    PicnicCredentialsRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+          description: Never echoed back in any response.
+
+    PicnicCredentialsStatus:
+      type: object
+      required: [linked]
+      properties:
+        linked:
+          type: boolean
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: Present only when linked.
+
+    ArticleSuggestion:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Picnic's product id
+        name:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        priceCents:
+          type: integer
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+          description: e.g. "500g", "Stück"
+
+    ItemSuggestions:
+      type: object
+      required: [itemId, itemName, suggestions]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        suggestions:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/ArticleSuggestion'
+
+    ExportSuggestionsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          description: Mirrors ShoppingListWithItems.items cap.
+          items:
+            $ref: '#/components/schemas/ItemSuggestions'
+
+    ExportSelection:
+      type: object
+      required: [itemId]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        articleId:
+          type: string
+          nullable: true
+          description: >-
+            Absent or null means the user skipped this item — no cart line
+            is added.
+
+    ExportRequest:
+      type: object
+      required: [selections]
+      properties:
+        selections:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ExportSelection'
+
+    ExportFailure:
+      type: object
+      required: [itemId, reason]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+
+    ExportResult:
+      type: object
+      required: [added, skipped, failures]
+      properties:
+        added:
+          type: integer
+        skipped:
+          type: integer
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportFailure'
 
     ApiError:
       type: object
