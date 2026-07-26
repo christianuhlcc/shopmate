@@ -20,7 +20,13 @@ const suggestions = {
       itemId: 'item-1',
       itemName: 'Milch',
       suggestions: [
-        { id: 'art-1', name: 'Bio Vollmilch', priceCents: 129, unit: '1L' },
+        {
+          id: 'art-1',
+          name: 'Bio Vollmilch',
+          priceCents: 129,
+          unit: '1L',
+          imageUrl: 'https://example.com/milch.png',
+        },
         { id: 'art-2', name: 'Haltbare Milch', priceCents: 99 },
       ],
     },
@@ -87,6 +93,30 @@ describe('PicnicExportSheet', () => {
     await user.click(screen.getByRole('button', { name: /link picnic account/i }))
     expect(onNeedsCredentials).toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('renders a product image when a suggestion has an imageUrl', async () => {
+    mockedApi.POST.mockResolvedValueOnce({ data: suggestions, error: undefined })
+    const { container } = render(
+      <PicnicExportSheet listId="list-1" onClose={vi.fn()} onNeedsCredentials={vi.fn()} />,
+    )
+    await screen.findByText('Milch')
+
+    // alt="" is intentional (decorative product thumbnail) — that gives the <img> an
+    // implicit "presentation" role in the accessibility tree, so getByRole('img')
+    // can't find it; query the DOM directly instead.
+    const image = container.querySelector('img')
+    expect(image).not.toBeNull()
+    expect(image?.src).toBe('https://example.com/milch.png')
+  })
+
+  it('shows the generic error banner when the suggestions request itself rejects', async () => {
+    mockedApi.POST.mockRejectedValueOnce(new Error('network down'))
+    render(<PicnicExportSheet listId="list-1" onClose={vi.fn()} onNeedsCredentials={vi.fn()} />)
+
+    expect(
+      await screen.findByText(/picnic isn't available right now — try again later/i),
+    ).toBeInTheDocument()
   })
 
   it('shows a generic error banner for an unexpected suggestions failure', async () => {
