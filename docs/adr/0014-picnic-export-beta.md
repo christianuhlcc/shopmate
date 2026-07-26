@@ -57,6 +57,12 @@ Options considered for mapping:
   and a resolution order before we know if search-match quality even
   warrants it. Deferred to a follow-up ADR once the beta has usage.
 
+*(Superseded by ADR-0015: the port, credential table, and endpoints below are
+generalized into a `GroceryExportPort` that Picnic is the first instance of,
+before any of this was implemented. The adapter-level decisions — Java
+re-implementation, top-5 picker, per-user credentials, MD5 mechanics,
+Germany-only, no session caching, no learned mapping — are unchanged.)*
+
 ## Decision
 
 Adopt **A + B**, gated behind a beta feature flag
