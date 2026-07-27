@@ -9,7 +9,6 @@ import com.shopmate.domain.model.PicnicLinkStatus;
 import com.shopmate.domain.port.in.PicnicExportUseCase;
 import com.shopmate.generated.api.PicnicExportApi;
 import com.shopmate.generated.model.ExportRequest;
-import com.shopmate.generated.model.ExportSuggestionsResponse;
 import com.shopmate.generated.model.ItemSuggestions;
 import com.shopmate.generated.model.PicnicCredentialsRequest;
 import com.shopmate.generated.model.PicnicCredentialsStatus;
@@ -84,13 +83,10 @@ public class PicnicExportController implements PicnicExportApi {
     }
 
     @Override
-    public ResponseEntity<ExportSuggestionsResponse> getPicnicExportSuggestions(@PathVariable UUID listId) {
+    public ResponseEntity<ItemSuggestions> getPicnicItemSuggestions(
+            @PathVariable UUID listId, @PathVariable UUID itemId) {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
-        List<ItemSuggestion> suggestions = picnicExportUseCase.getSuggestions(listId, currentUserId);
-        List<ItemSuggestions> dtos = suggestions.stream()
-                .map(this::toDto)
-                .toList();
-        return ResponseEntity.ok(new ExportSuggestionsResponse(dtos));
+        return ResponseEntity.ok(toDto(picnicExportUseCase.getItemSuggestions(listId, itemId, currentUserId)));
     }
 
     @Override

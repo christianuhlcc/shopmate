@@ -116,18 +116,17 @@ class PicnicExportControllerTest {
     }
 
     @Test
-    void getPicnicExportSuggestionsDelegatesAndMapsFieldForField() {
+    void getPicnicItemSuggestionsDelegatesAndMapsFieldForField() {
         ArticleSuggestion withImage = new ArticleSuggestion("art-1", "Vollmilch 1L", "https://img/1.png", 129, "1L");
         ArticleSuggestion withoutImage = new ArticleSuggestion("art-2", "Vollmilch 1.5L", null, null, null);
         ItemSuggestion suggestion = new ItemSuggestion(ITEM_ID, "Milch", List.of(withImage, withoutImage));
-        when(picnicExportUseCase.getSuggestions(LIST_ID, USER_ID)).thenReturn(List.of(suggestion));
+        when(picnicExportUseCase.getItemSuggestions(LIST_ID, ITEM_ID, USER_ID)).thenReturn(suggestion);
 
-        var response = controller.getPicnicExportSuggestions(LIST_ID);
+        var response = controller.getPicnicItemSuggestions(LIST_ID, ITEM_ID);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        verify(picnicExportUseCase).getSuggestions(LIST_ID, USER_ID);
-        assertThat(response.getBody().getItems()).hasSize(1);
-        var itemDto = response.getBody().getItems().get(0);
+        verify(picnicExportUseCase).getItemSuggestions(LIST_ID, ITEM_ID, USER_ID);
+        var itemDto = response.getBody();
         assertThat(itemDto.getItemId()).isEqualTo(ITEM_ID);
         assertThat(itemDto.getItemName()).isEqualTo("Milch");
         assertThat(itemDto.getSuggestions()).hasSize(2);

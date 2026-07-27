@@ -4,6 +4,7 @@ import com.shopmate.domain.model.ArticleSuggestion;
 import com.shopmate.domain.model.ExportFailure;
 import com.shopmate.domain.model.ExportResult;
 import com.shopmate.domain.model.ExportSelection;
+import com.shopmate.domain.model.ItemNotFoundException;
 import com.shopmate.domain.model.ItemSuggestion;
 import com.shopmate.domain.model.PicnicAccountLink;
 import com.shopmate.domain.model.PicnicCredentials;
@@ -36,7 +37,9 @@ import java.util.regex.Pattern;
 @Service
 public class PicnicExportService implements PicnicExportUseCase {
 
-    private static final int MAX_SUGGESTIONS_PER_ITEM = 5;
+    // Picnic returns ~120 products per search and we parse the whole response anyway, so a
+    // deeper list is free; five routinely failed to contain the right product.
+    private static final int MAX_SUGGESTIONS_PER_ITEM = 20;
     private static final Pattern LEADING_DIGITS = Pattern.compile("^(\\d+)");
     private static final SecureRandom DEVICE_ID_RANDOM = new SecureRandom();
 
@@ -107,24 +110,20 @@ public class PicnicExportService implements PicnicExportUseCase {
     }
 
     @Override
-    public List<ItemSuggestion> getSuggestions(UUID listId, UUID requestingUserId) {
+    public ItemSuggestion getItemSuggestions(UUID listId, UUID itemId, UUID requestingUserId) {
         PicnicSession session = requireLinkedSession(requestingUserId);
         ShoppingList list = shoppingListUseCase.getList(listId, requestingUserId);
 
-        List<ItemSuggestion> result = new ArrayList<>();
-        for (ShoppingItem item : list.activeItems()) {
-            if (item.checked().value()) {
-                continue;
-            }
-            // Let PicnicUnavailableException propagate uncaught: a search failure for any
-            // item fails the whole call (all-or-nothing), unlike export's per-item handling.
-            List<ArticleSuggestion> suggestions = picnicClientPort.searchArticles(session, item.name().value())
-                .stream()
-                .limit(MAX_SUGGESTIONS_PER_ITEM)
-                .toList();
-            result.add(new ItemSuggestion(item.id(), item.name().value(), suggestions));
+        ShoppingItem item = list.items().get(itemId);
+        if (item == null || item.deleted().value() || item.checked().value()) {
+            throw new ItemNotFoundException(itemId);
         }
-        return result;
+
+        List<ArticleSuggestion> suggestions = picnicClientPort.searchArticles(session, item.name().value())
+            .stream()
+            .limit(MAX_SUGGESTIONS_PER_ITEM)
+            .toList();
+        return new ItemSuggestion(item.id(), item.name().value(), suggestions);
     }
 
     @Override

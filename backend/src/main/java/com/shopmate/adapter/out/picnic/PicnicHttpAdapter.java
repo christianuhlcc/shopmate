@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -25,7 +26,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 /**
  * Outbound adapter for Picnic's unofficial storefront API — see ADR-0014. The wire protocol
@@ -96,7 +99,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .POST(HttpRequest.BodyPublishers.ofString(writeJson(Map.of("channel", "SMS"))))
             .build();
 
-        HttpResponse<String> response = send(request);
+        HttpResponse<byte[]> response = send(request);
         if (!isSuccess(response.statusCode())) {
             throw new PicnicUnavailableException(
                 "Picnic refused to send a second-factor code (HTTP " + response.statusCode() + ")");
@@ -109,11 +112,11 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .POST(HttpRequest.BodyPublishers.ofString(writeJson(Map.of("otp", code))))
             .build();
 
-        HttpResponse<String> response = send(request);
+        HttpResponse<byte[]> response = send(request);
 
         // A wrong or expired code is the user's problem to fix, not an outage.
         if (response.statusCode() >= 400 && response.statusCode() < 500) {
-            JsonNode body = tryParseJson(response.body());
+            JsonNode body = tryParseJson(bodyOf(response));
             throw new PicnicLoginFailedException("Picnic rejected the second-factor code"
                 + (hasErrorIndicator(body) ? ": " + errorMessage(body) : ""));
         }
@@ -137,7 +140,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .GET()
             .build();
 
-        HttpResponse<String> response = send(request);
+        HttpResponse<byte[]> response = send(request);
         rejectIfSessionRefused(response.statusCode(), "search");
         if (!isSuccess(response.statusCode())) {
             throw new PicnicUnavailableException("Picnic search failed with unexpected status " + response.statusCode());
@@ -145,7 +148,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
 
         JsonNode root;
         try {
-            root = objectMapper.readTree(response.body());
+            root = objectMapper.readTree(bodyOf(response));
         } catch (JsonProcessingException e) {
             throw new PicnicUnavailableException("Picnic search returned a malformed JSON body", e);
         }
@@ -164,7 +167,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
 
-        HttpResponse<String> response = send(request);
+        HttpResponse<byte[]> response = send(request);
         rejectIfSessionRefused(response.statusCode(), "add-to-cart");
         if (!isSuccess(response.statusCode())) {
             throw new PicnicUnavailableException("Picnic add-to-cart failed with unexpected status " + response.statusCode());
@@ -189,12 +192,12 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build();
 
-        HttpResponse<String> response = send(request);
+        HttpResponse<byte[]> response = send(request);
 
         // A rejected login can show up as a 200 with an error indicator in the body (community
         // clients check error_code values like AUTH_ERROR/AUTH_INVALID_CRED) as well as a plain
         // non-2xx status, so the body check runs regardless of status code.
-        JsonNode body = tryParseJson(response.body());
+        JsonNode body = tryParseJson(bodyOf(response));
         if (hasErrorIndicator(body)) {
             throw new PicnicLoginFailedException("Picnic rejected the login: " + errorMessage(body));
         }
@@ -232,7 +235,11 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .uri(URI.create(uri))
             .header("User-Agent", USER_AGENT)
             .header("Content-Type", CONTENT_TYPE)
-            .header("Accept-Language", ACCEPT_LANGUAGE);
+            .header("Accept-Language", ACCEPT_LANGUAGE)
+            // Measured 2026-07-26: a search page is 1.5 MB raw and 59 KB gzipped. Java's
+            // HttpClient neither asks for nor decodes gzip on its own, so without this we pay
+            // 26x the bandwidth for every search.
+            .header("Accept-Encoding", "gzip");
     }
 
     private static HttpRequest.Builder authedRequest(String uri, PicnicSession session) {
@@ -242,14 +249,38 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             .header("x-picnic-did", session.deviceId());
     }
 
-    private HttpResponse<String> send(HttpRequest request) {
+    private HttpResponse<byte[]> send(HttpRequest request) {
         try {
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            // Bytes, not a String: the body may be gzipped, and decoding as text first would
+            // corrupt it.
+            return httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
         } catch (IOException e) {
             throw new PicnicUnavailableException("Failed to reach Picnic: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new PicnicUnavailableException("Interrupted while calling Picnic", e);
+        }
+    }
+
+    /**
+     * Decodes the response body, transparently un-gzipping when Picnic honoured our
+     * Accept-Encoding. Picnic is not required to compress, so both shapes must work.
+     */
+    private static String bodyOf(HttpResponse<byte[]> response) {
+        byte[] raw = response.body();
+        if (raw == null || raw.length == 0) {
+            return "";
+        }
+        boolean gzipped = response.headers().firstValue("Content-Encoding")
+            .map(value -> value.toLowerCase(Locale.ROOT).contains("gzip"))
+            .orElse(false);
+        if (!gzipped) {
+            return new String(raw, StandardCharsets.UTF_8);
+        }
+        try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(raw))) {
+            return new String(gzip.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new PicnicUnavailableException("Picnic returned an undecodable gzip body", e);
         }
     }
 

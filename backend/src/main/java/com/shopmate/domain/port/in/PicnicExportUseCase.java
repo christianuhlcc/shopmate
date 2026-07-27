@@ -37,14 +37,18 @@ public interface PicnicExportUseCase {
     PicnicLinkStatus getCredentialsStatus(UUID userId);
 
     /**
-     * Only considers active items ({@code checked=false}, {@code deleted=false}).
-     * Throws {@link com.shopmate.domain.model.PicnicCredentialsMissingException} if nothing is
-     * linked, {@link com.shopmate.domain.model.PicnicSecondFactorRequiredException} if linking
-     * was never completed, and
+     * Suggestions for a single item — one Picnic search per call. Searching a whole list up
+     * front made the wait scale with list size and spent searches on items the user then
+     * skipped; the client walks items instead.
+     *
+     * <p>The item must be active ({@code checked=false}, {@code deleted=false}) and on the
+     * list. Throws {@link com.shopmate.domain.model.PicnicCredentialsMissingException} if
+     * nothing is linked, {@link com.shopmate.domain.model.PicnicSecondFactorRequiredException}
+     * if linking was never completed, and
      * {@link com.shopmate.domain.model.PicnicSessionExpiredException} if the stored session is
      * no longer accepted.
      */
-    List<ItemSuggestion> getSuggestions(UUID listId, UUID requestingUserId);
+    ItemSuggestion getItemSuggestions(UUID listId, UUID itemId, UUID requestingUserId);
 
     ExportResult export(UUID listId, UUID requestingUserId, List<ExportSelection> selections);
 }

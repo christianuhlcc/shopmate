@@ -4,6 +4,7 @@ import com.shopmate.domain.model.AccessForbiddenException;
 import com.shopmate.domain.model.AlreadyInGroupException;
 import com.shopmate.domain.model.GroupNameRequiredException;
 import com.shopmate.domain.model.InvalidItemException;
+import com.shopmate.domain.model.ItemNotFoundException;
 import com.shopmate.domain.model.InviteExpiredException;
 import com.shopmate.domain.model.InviteInvalidException;
 import com.shopmate.domain.model.ListCapacityExceededException;
@@ -35,6 +36,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handleListNotFound(ListNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiError("LIST_NOT_FOUND", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(ItemNotFoundException.class)
+    public ResponseEntity<ApiError> handleItemNotFound(ItemNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiError("ITEM_NOT_FOUND", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(AccessForbiddenException.class)

@@ -13,7 +13,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -326,6 +329,39 @@ class PicnicHttpAdapterTest {
         assertThat(second.priceCents()).isNull();
         assertThat(second.unit()).isNull();
         assertThat(second.imageUrl()).isNull();
+    }
+
+    @Test
+    void searchArticlesDecodesAGzippedResponse() throws Exception {
+        // Measured against the live API: 1.5 MB raw vs 59 KB gzipped for one search. Java's
+        // HttpClient does not decode gzip itself, so this is the difference between paying
+        // 26x the bandwidth and not.
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(compressed)) {
+            gzip.write(REAL_SEARCH_PAGE.getBytes(StandardCharsets.UTF_8));
+        }
+
+        wireMockServer.stubFor(get(urlPathEqualTo("/pages/search-page-results"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withHeader("Content-Encoding", "gzip")
+                .withBody(compressed.toByteArray())));
+
+        List<ArticleSuggestion> results = adapter.searchArticles(SESSION, "Milch");
+
+        assertThat(results).extracting(ArticleSuggestion::id).containsExactly("s1018863", "s1020462");
+    }
+
+    @Test
+    void searchArticlesAsksForGzip() {
+        stubSearch(REAL_SEARCH_PAGE);
+
+        adapter.searchArticles(SESSION, "Milch");
+
+        wireMockServer.verify(com.github.tomakehurst.wiremock.client.WireMock
+            .getRequestedFor(urlPathEqualTo("/pages/search-page-results"))
+            .withHeader("Accept-Encoding", com.github.tomakehurst.wiremock.client.WireMock
+                .containing("gzip")));
     }
 
     @Test

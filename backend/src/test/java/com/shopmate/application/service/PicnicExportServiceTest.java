@@ -3,6 +3,7 @@ package com.shopmate.application.service;
 import com.shopmate.domain.model.ArticleSuggestion;
 import com.shopmate.domain.model.ExportResult;
 import com.shopmate.domain.model.ExportSelection;
+import com.shopmate.domain.model.ItemNotFoundException;
 import com.shopmate.domain.model.ItemSuggestion;
 import com.shopmate.domain.model.LwwField;
 import com.shopmate.domain.model.PicnicAccountLink;
@@ -280,58 +281,77 @@ class PicnicExportServiceTest {
         assertThat(status.state()).isNull();
     }
 
-    // --- getSuggestions -----------------------------------------------------------
+    // --- getItemSuggestions -------------------------------------------------------
 
     @Test
-    void getSuggestionsThrowsWhenCredentialsMissing() {
+    void getItemSuggestionsThrowsWhenCredentialsMissing() {
         when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getSuggestions(LIST_ID, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, UUID.randomUUID(), USER_ID))
             .isInstanceOf(PicnicCredentialsMissingException.class);
 
+        // Checked before the list is even loaded — no point paying for a fetch we cannot use.
         verify(shoppingListUseCase, never()).getList(any(), any());
     }
 
     @Test
-    void getSuggestionsExcludesCheckedItemsAndCapsAtFive() {
+    void getItemSuggestionsSearchesOnlyTheRequestedItemAndCapsAtTwenty() {
         givenLinkedAccount();
 
-        UUID activeItemId = UUID.randomUUID();
-        UUID checkedItemId = UUID.randomUUID();
-        ShoppingItem active = item(activeItemId, "Milch", "1", false, false, "a0");
-        ShoppingItem checked = item(checkedItemId, "Butter", "1", true, false, "b0");
-        ShoppingList list = listOf(active, checked);
-        when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(list);
+        UUID targetId = UUID.randomUUID();
+        ShoppingItem target = item(targetId, "Milch", "1", false, false, "a0");
+        ShoppingItem other = item(UUID.randomUUID(), "Butter", "1", false, false, "b0");
+        when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf(target, other));
 
-        List<ArticleSuggestion> sixResults = List.of(
-            article("1"), article("2"), article("3"), article("4"), article("5"), article("6"));
-        when(picnicClientPort.searchArticles(SESSION, "Milch")).thenReturn(sixResults);
+        List<ArticleSuggestion> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            many.add(article(String.valueOf(i)));
+        }
+        when(picnicClientPort.searchArticles(SESSION, "Milch")).thenReturn(many);
 
-        List<ItemSuggestion> suggestions = service.getSuggestions(LIST_ID, USER_ID);
+        ItemSuggestion result = service.getItemSuggestions(LIST_ID, targetId, USER_ID);
 
-        assertThat(suggestions).hasSize(1);
-        ItemSuggestion only = suggestions.get(0);
-        assertThat(only.itemId()).isEqualTo(activeItemId);
-        assertThat(only.itemName()).isEqualTo("Milch");
-        assertThat(only.suggestions()).hasSize(5);
-        assertThat(only.suggestions()).containsExactly(
-            article("1"), article("2"), article("3"), article("4"), article("5"));
+        assertThat(result.itemId()).isEqualTo(targetId);
+        assertThat(result.itemName()).isEqualTo("Milch");
+        assertThat(result.suggestions()).hasSize(20);
 
+        // The whole point of per-item: other items on the list cost nothing.
         verify(picnicClientPort, never()).searchArticles(eq(SESSION), eq("Butter"));
-        verify(shoppingListUseCase).getList(LIST_ID, USER_ID);
     }
 
     @Test
-    void getSuggestionsPropagatesUnavailableFromSearch() {
+    void getItemSuggestionsRejectsItemsThatAreNotExportable() {
         givenLinkedAccount();
 
-        ShoppingItem active = item(UUID.randomUUID(), "Milch", "1", false, false, "a0");
-        ShoppingList list = listOf(active);
-        when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(list);
+        UUID checkedId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        UUID absentId = UUID.randomUUID();
+        when(shoppingListUseCase.getList(LIST_ID, USER_ID)).thenReturn(listOf(
+            item(checkedId, "Butter", "1", true, false, "a0"),
+            item(deletedId, "Brot", "1", false, true, "b0")));
+
+        // Checked off, deleted, or simply not on the list — all 404 from the caller's side.
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, checkedId, USER_ID))
+            .isInstanceOf(ItemNotFoundException.class);
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, deletedId, USER_ID))
+            .isInstanceOf(ItemNotFoundException.class);
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, absentId, USER_ID))
+            .isInstanceOf(ItemNotFoundException.class);
+
+        verify(picnicClientPort, never()).searchArticles(any(), any());
+    }
+
+    @Test
+    void getItemSuggestionsPropagatesUnavailableFromSearch() {
+        givenLinkedAccount();
+
+        UUID itemId = UUID.randomUUID();
+        when(shoppingListUseCase.getList(LIST_ID, USER_ID))
+            .thenReturn(listOf(item(itemId, "Milch", "1", false, false, "a0")));
         when(picnicClientPort.searchArticles(eq(SESSION), any()))
             .thenThrow(new PicnicUnavailableException("picnic down"));
 
-        assertThatThrownBy(() -> service.getSuggestions(LIST_ID, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, itemId, USER_ID))
             .isInstanceOf(PicnicUnavailableException.class);
     }
 
