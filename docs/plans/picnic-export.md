@@ -442,10 +442,42 @@ so it should be accepted — but no write to a real cart has ever been made.
 That is steps 6–7, and it is the last thing standing between this branch and a
 PR.
 
-**Also worth knowing before shipping:** a suggestions call costs one ~1.5 MB
-search response *per item*, so a six-item list moves ~9 MB and takes roughly
-15–20 s. That is a real UX and bandwidth problem at list sizes users will
-actually have, and nothing in the current design mitigates it.
+### Performance (done 2026-07-26)
+
+Measured against the live API, then fixed:
+
+- **gzip.** A search page is 1,541,133 B raw and 58,621 B gzipped — 26×. Java's
+  `HttpClient` neither requests nor decodes gzip, so we were paying full freight
+  for every search. Now asked for and decoded.
+- **Per-item suggestions.** `POST /lists/{listId}/picnic/suggestions/{itemId}`
+  replaces the whole-list endpoint. TTFB is ~2–3.5 s of Picnic's own render and
+  no `limit`/`page_size`/`count` parameter is honoured (all return byte-identical
+  responses), so the only lever is how many renders the user waits on serially.
+  The client steps items and prefetches the next while the user decides, which
+  makes time-to-first-choice constant (~2.8 s measured) instead of growing with
+  list size, and stops paying for items the user was going to skip.
+- **20 suggestions instead of 5.** Picnic returns ~120 per search and we parse
+  the whole response regardless, so depth is free.
+
+### Next: query quality (not started — for a fresh session)
+
+The remaining weakness is not result *depth*, it is the *query*. Item names are
+freitext and often make poor search terms: "test" returns
+*TESTAmed Schwangerschafts-Frühtest*, and no number of results fixes that.
+
+Suggested follow-up:
+
+- Add an **editable search term per item** in the export sheet, seeded with the
+  item name, so a user can type "bio vollmilch" when "Milch" is not landing.
+  This needs the term as a query parameter on the per-item suggestions endpoint,
+  which currently derives it from the item name server-side.
+- Back it with Picnic's `GET /suggest?search_term=` autocomplete. Verified live:
+  524 bytes, and for "Milch" it returns `h-milch`, `milchreis`,
+  `milch laktosefrei`, `milchschnitte`, `bio milch`, `milchbrötchen`, `h milch`.
+  Cheap enough to call on every keystroke.
+- Worth deciding at the same time whether a confirmed pick should be remembered
+  per item name — that is ADR-0014's deferred Option C, and it would remove the
+  query problem entirely for repeat items.
 
 ### If something's off
 

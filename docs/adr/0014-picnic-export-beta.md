@@ -162,6 +162,19 @@ unchanged from what this ADR assumed — the mapped fields are all present and
 correct. These are wire-level details, recorded in
 `docs/plans/picnic-export.md`, not architecture.
 
+**One more decision above changed with it.** "Per-item top-5 picker" was
+written as settled; the *top-5* half did not survive contact. Each Picnic
+search costs ~2–3 s of their server-side render, and no page-size parameter is
+honoured, so fetching a whole list up front made the wait grow linearly with
+list size and spent searches on items the user then skipped. Suggestions are
+now fetched **one item per request**, with the client stepping through items
+and prefetching the next while the user decides — time-to-first-choice becomes
+constant instead of proportional to list length. The picker also shows up to 20
+rather than 5: Picnic returns ~120 per search and we parse the response in full
+regardless, so depth costs nothing, and five was routinely too few to contain
+the right product. The *manual picker* half of the decision is unchanged and
+still the point.
+
 ## Consequences
 
 - **No SLA on the underlying integration.** Picnic can change endpoints,
