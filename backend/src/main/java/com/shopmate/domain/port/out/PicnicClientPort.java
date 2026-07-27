@@ -44,6 +44,16 @@ public interface PicnicClientPort {
     List<ArticleSuggestion> searchArticles(PicnicSession session, String term);
 
     /**
+     * Autocompletes a partial search term — Picnic's own suggestions, not products. Separate
+     * from {@link #searchArticles} because it is a different endpoint with a different cost:
+     * this one renders no page, so it is cheap enough to call as the user types.
+     *
+     * <p>Throws PicnicSessionExpiredException when the session is refused,
+     * PicnicUnavailableException on I/O failure, an unexpected status, or a malformed body.
+     */
+    List<String> suggestSearchTerms(PicnicSession session, String partialTerm);
+
+    /**
      * Throws PicnicSessionExpiredException when the session is refused,
      * PicnicUnavailableException on I/O failure or an unexpected status.
      */

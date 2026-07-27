@@ -110,7 +110,8 @@ public class PicnicExportService implements PicnicExportUseCase {
     }
 
     @Override
-    public ItemSuggestion getItemSuggestions(UUID listId, UUID itemId, UUID requestingUserId) {
+    public ItemSuggestion getItemSuggestions(
+            UUID listId, UUID itemId, UUID requestingUserId, String searchTermOverride) {
         PicnicSession session = requireLinkedSession(requestingUserId);
         ShoppingList list = shoppingListUseCase.getList(listId, requestingUserId);
 
@@ -119,11 +120,27 @@ public class PicnicExportService implements PicnicExportUseCase {
             throw new ItemNotFoundException(itemId);
         }
 
-        List<ArticleSuggestion> suggestions = picnicClientPort.searchArticles(session, item.name().value())
+        // The override is a query, not a rename: it changes what we ask Picnic and nothing on
+        // the list, so a bad guess costs the user one search rather than editing an item that
+        // everyone in the group sees.
+        String term = blankToNull(searchTermOverride) != null
+            ? searchTermOverride.trim()
+            : item.name().value();
+
+        List<ArticleSuggestion> suggestions = picnicClientPort.searchArticles(session, term)
             .stream()
             .limit(MAX_SUGGESTIONS_PER_ITEM)
             .toList();
-        return new ItemSuggestion(item.id(), item.name().value(), suggestions);
+        return new ItemSuggestion(item.id(), item.name().value(), term, suggestions);
+    }
+
+    @Override
+    public List<String> suggestSearchTerms(UUID requestingUserId, String partialTerm) {
+        PicnicSession session = requireLinkedSession(requestingUserId);
+        if (blankToNull(partialTerm) == null) {
+            return List.of();
+        }
+        return picnicClientPort.suggestSearchTerms(session, partialTerm.trim());
     }
 
     @Override
@@ -180,6 +197,10 @@ public class PicnicExportService implements PicnicExportUseCase {
             throw new PicnicSecondFactorRequiredException(userId);
         }
         return link;
+    }
+
+    private static String blankToNull(String value) {
+        return (value == null || value.isBlank()) ? null : value;
     }
 
     /** 16 hex chars, matching the shape of the device ids Picnic's own clients send. */

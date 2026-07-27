@@ -119,16 +119,19 @@ class PicnicExportControllerTest {
     void getPicnicItemSuggestionsDelegatesAndMapsFieldForField() {
         ArticleSuggestion withImage = new ArticleSuggestion("art-1", "Vollmilch 1L", "https://img/1.png", 129, "1L");
         ArticleSuggestion withoutImage = new ArticleSuggestion("art-2", "Vollmilch 1.5L", null, null, null);
-        ItemSuggestion suggestion = new ItemSuggestion(ITEM_ID, "Milch", List.of(withImage, withoutImage));
-        when(picnicExportUseCase.getItemSuggestions(LIST_ID, ITEM_ID, USER_ID)).thenReturn(suggestion);
+        ItemSuggestion suggestion =
+            new ItemSuggestion(ITEM_ID, "Milch", "Milch", List.of(withImage, withoutImage));
+        when(picnicExportUseCase.getItemSuggestions(LIST_ID, ITEM_ID, USER_ID, null))
+            .thenReturn(suggestion);
 
-        var response = controller.getPicnicItemSuggestions(LIST_ID, ITEM_ID);
+        var response = controller.getPicnicItemSuggestions(LIST_ID, ITEM_ID, null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        verify(picnicExportUseCase).getItemSuggestions(LIST_ID, ITEM_ID, USER_ID);
+        verify(picnicExportUseCase).getItemSuggestions(LIST_ID, ITEM_ID, USER_ID, null);
         var itemDto = response.getBody();
         assertThat(itemDto.getItemId()).isEqualTo(ITEM_ID);
         assertThat(itemDto.getItemName()).isEqualTo("Milch");
+        assertThat(itemDto.getSearchTerm()).isEqualTo("Milch");
         assertThat(itemDto.getSuggestions()).hasSize(2);
 
         var first = itemDto.getSuggestions().get(0);
@@ -144,6 +147,32 @@ class PicnicExportControllerTest {
         assertThat(second.getImageUrl()).isNull();
         assertThat(second.getPriceCents()).isNull();
         assertThat(second.getUnit()).isNull();
+    }
+
+    @Test
+    void getPicnicItemSuggestionsForwardsTheSearchTermOverride() {
+        ItemSuggestion suggestion =
+            new ItemSuggestion(ITEM_ID, "Milch", "bio vollmilch", List.of());
+        when(picnicExportUseCase.getItemSuggestions(LIST_ID, ITEM_ID, USER_ID, "bio vollmilch"))
+            .thenReturn(suggestion);
+
+        var response = controller.getPicnicItemSuggestions(LIST_ID, ITEM_ID, "bio vollmilch");
+
+        // Echoed back rather than assumed: the client uses it to spot a response for a term it
+        // has already moved on from.
+        assertThat(response.getBody().getSearchTerm()).isEqualTo("bio vollmilch");
+        assertThat(response.getBody().getItemName()).isEqualTo("Milch");
+    }
+
+    @Test
+    void getPicnicSearchTermsDelegatesToTheUseCase() {
+        when(picnicExportUseCase.suggestSearchTerms(USER_ID, "mil"))
+            .thenReturn(List.of("milch", "milchreis"));
+
+        var response = controller.getPicnicSearchTerms("mil");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody().getTerms()).containsExactly("milch", "milchreis");
     }
 
     @Test

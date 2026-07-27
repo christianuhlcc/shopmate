@@ -287,7 +287,7 @@ class PicnicExportServiceTest {
     void getItemSuggestionsThrowsWhenCredentialsMissing() {
         when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, UUID.randomUUID(), USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, UUID.randomUUID(), USER_ID, null))
             .isInstanceOf(PicnicCredentialsMissingException.class);
 
         // Checked before the list is even loaded — no point paying for a fetch we cannot use.
@@ -309,14 +309,81 @@ class PicnicExportServiceTest {
         }
         when(picnicClientPort.searchArticles(SESSION, "Milch")).thenReturn(many);
 
-        ItemSuggestion result = service.getItemSuggestions(LIST_ID, targetId, USER_ID);
+        ItemSuggestion result = service.getItemSuggestions(LIST_ID, targetId, USER_ID, null);
 
         assertThat(result.itemId()).isEqualTo(targetId);
         assertThat(result.itemName()).isEqualTo("Milch");
+        assertThat(result.searchTerm()).isEqualTo("Milch");
         assertThat(result.suggestions()).hasSize(20);
 
         // The whole point of per-item: other items on the list cost nothing.
         verify(picnicClientPort, never()).searchArticles(eq(SESSION), eq("Butter"));
+    }
+
+    @Test
+    void getItemSuggestionsSearchesTheOverrideInsteadOfTheItemName() {
+        givenLinkedAccount();
+
+        UUID itemId = UUID.randomUUID();
+        when(shoppingListUseCase.getList(LIST_ID, USER_ID))
+            .thenReturn(listOf(item(itemId, "Milch", "1", false, false, "a0")));
+        when(picnicClientPort.searchArticles(SESSION, "bio vollmilch"))
+            .thenReturn(List.of(article("s1")));
+
+        ItemSuggestion result =
+            service.getItemSuggestions(LIST_ID, itemId, USER_ID, "  bio vollmilch  ");
+
+        // Trimmed on the way out, and reported back so the client can tell which term the
+        // results belong to.
+        verify(picnicClientPort).searchArticles(SESSION, "bio vollmilch");
+        assertThat(result.searchTerm()).isEqualTo("bio vollmilch");
+        // The item itself is untouched — an override is a query, not a rename.
+        assertThat(result.itemName()).isEqualTo("Milch");
+    }
+
+    @Test
+    void getItemSuggestionsFallsBackToTheItemNameForABlankOverride() {
+        givenLinkedAccount();
+
+        UUID itemId = UUID.randomUUID();
+        when(shoppingListUseCase.getList(LIST_ID, USER_ID))
+            .thenReturn(listOf(item(itemId, "Milch", "1", false, false, "a0")));
+        when(picnicClientPort.searchArticles(SESSION, "Milch")).thenReturn(List.of(article("s1")));
+
+        // A user who clears the field gets the default back, not an empty search.
+        assertThat(service.getItemSuggestions(LIST_ID, itemId, USER_ID, "   ").searchTerm())
+            .isEqualTo("Milch");
+        verify(picnicClientPort).searchArticles(SESSION, "Milch");
+    }
+
+    // --- suggestSearchTerms -------------------------------------------------------
+
+    @Test
+    void suggestSearchTermsThrowsWhenCredentialsMissing() {
+        when(picnicCredentialsRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.suggestSearchTerms(USER_ID, "mil"))
+            .isInstanceOf(PicnicCredentialsMissingException.class);
+    }
+
+    @Test
+    void suggestSearchTermsPassesTheTrimmedTermThrough() {
+        givenLinkedAccount();
+        when(picnicClientPort.suggestSearchTerms(SESSION, "mil"))
+            .thenReturn(List.of("milch", "milchreis"));
+
+        assertThat(service.suggestSearchTerms(USER_ID, " mil ")).containsExactly("milch", "milchreis");
+    }
+
+    @Test
+    void suggestSearchTermsSkipsPicnicEntirelyForABlankTerm() {
+        givenLinkedAccount();
+
+        assertThat(service.suggestSearchTerms(USER_ID, "  ")).isEmpty();
+        assertThat(service.suggestSearchTerms(USER_ID, null)).isEmpty();
+
+        // An empty box has nothing to autocomplete; asking Picnic would be a wasted round trip.
+        verify(picnicClientPort, never()).suggestSearchTerms(any(), any());
     }
 
     @Test
@@ -331,11 +398,11 @@ class PicnicExportServiceTest {
             item(deletedId, "Brot", "1", false, true, "b0")));
 
         // Checked off, deleted, or simply not on the list — all 404 from the caller's side.
-        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, checkedId, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, checkedId, USER_ID, null))
             .isInstanceOf(ItemNotFoundException.class);
-        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, deletedId, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, deletedId, USER_ID, null))
             .isInstanceOf(ItemNotFoundException.class);
-        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, absentId, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, absentId, USER_ID, null))
             .isInstanceOf(ItemNotFoundException.class);
 
         verify(picnicClientPort, never()).searchArticles(any(), any());
@@ -351,7 +418,7 @@ class PicnicExportServiceTest {
         when(picnicClientPort.searchArticles(eq(SESSION), any()))
             .thenThrow(new PicnicUnavailableException("picnic down"));
 
-        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, itemId, USER_ID))
+        assertThatThrownBy(() -> service.getItemSuggestions(LIST_ID, itemId, USER_ID, null))
             .isInstanceOf(PicnicUnavailableException.class);
     }
 

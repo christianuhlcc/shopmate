@@ -13,6 +13,7 @@ import com.shopmate.generated.model.ItemSuggestions;
 import com.shopmate.generated.model.PicnicCredentialsRequest;
 import com.shopmate.generated.model.PicnicCredentialsStatus;
 import com.shopmate.generated.model.PicnicLinkResult;
+import com.shopmate.generated.model.PicnicSearchTerms;
 import com.shopmate.generated.model.PicnicSecondFactorRequest;
 import com.shopmate.infrastructure.security.SecurityContextHelper;
 import jakarta.validation.Valid;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -84,9 +86,19 @@ public class PicnicExportController implements PicnicExportApi {
 
     @Override
     public ResponseEntity<ItemSuggestions> getPicnicItemSuggestions(
-            @PathVariable UUID listId, @PathVariable UUID itemId) {
+            @PathVariable UUID listId,
+            @PathVariable UUID itemId,
+            @RequestParam(required = false) String searchTerm) {
         UUID currentUserId = securityContextHelper.getCurrentUserId();
-        return ResponseEntity.ok(toDto(picnicExportUseCase.getItemSuggestions(listId, itemId, currentUserId)));
+        return ResponseEntity.ok(toDto(
+                picnicExportUseCase.getItemSuggestions(listId, itemId, currentUserId, searchTerm)));
+    }
+
+    @Override
+    public ResponseEntity<PicnicSearchTerms> getPicnicSearchTerms(@RequestParam String term) {
+        UUID currentUserId = securityContextHelper.getCurrentUserId();
+        return ResponseEntity.ok(new PicnicSearchTerms(
+                picnicExportUseCase.suggestSearchTerms(currentUserId, term)));
     }
 
     @Override
@@ -111,7 +123,8 @@ public class PicnicExportController implements PicnicExportApi {
         List<com.shopmate.generated.model.ArticleSuggestion> articleDtos = suggestion.suggestions().stream()
                 .map(this::toDto)
                 .toList();
-        return new ItemSuggestions(suggestion.itemId(), suggestion.itemName(), articleDtos);
+        return new ItemSuggestions(
+                suggestion.itemId(), suggestion.itemName(), suggestion.searchTerm(), articleDtos);
     }
 
     private com.shopmate.generated.model.ArticleSuggestion toDto(ArticleSuggestion suggestion) {

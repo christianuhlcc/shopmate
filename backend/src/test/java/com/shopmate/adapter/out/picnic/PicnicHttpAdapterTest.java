@@ -455,6 +455,94 @@ class PicnicHttpAdapterTest {
             .isInstanceOf(PicnicUnavailableException.class);
     }
 
+    // --- suggest -------------------------------------------------------------------------
+
+    @Test
+    void suggestSearchTermsReadsTheFlatSuggestionArray() {
+        // Shape from the maintained reference client (MRVDH/picnic-api) and matching a live
+        // 524-byte response for "Milch": a bare array, not the page tree search answers with.
+        stubSuggest("""
+            [
+              {"type": "SEARCH_SUGGESTION", "id": "sug-1", "suggestion": "h-milch"},
+              {"type": "SEARCH_SUGGESTION", "id": "sug-2", "suggestion": "milchreis"},
+              {"type": "SEARCH_SUGGESTION", "id": "sug-3", "suggestion": "milch laktosefrei"}
+            ]
+            """);
+
+        assertThat(adapter.suggestSearchTerms(SESSION, "milch"))
+            .containsExactly("h-milch", "milchreis", "milch laktosefrei");
+
+        wireMockServer.verify(com.github.tomakehurst.wiremock.client.WireMock
+            .getRequestedFor(urlPathEqualTo("/suggest"))
+            .withQueryParam("search_term", equalTo("milch"))
+            .withHeader("x-picnic-auth", equalTo("session-key")));
+    }
+
+    @Test
+    void suggestSearchTermsDropsUnusableAndDuplicateEntries() {
+        stubSuggest("""
+            [
+              {"type": "SEARCH_SUGGESTION", "id": "sug-1", "suggestion": "milch"},
+              {"type": "SEARCH_SUGGESTION", "id": "sug-2"},
+              {"type": "SEARCH_SUGGESTION", "id": "sug-3", "suggestion": "milch"},
+              "milch",
+              {"type": "SEARCH_SUGGESTION", "id": "sug-4", "suggestion": "bio milch"}
+            ]
+            """);
+
+        // Duplicates would render as two identical rows under the field, which reads as a bug.
+        assertThat(adapter.suggestSearchTerms(SESSION, "milch"))
+            .containsExactly("milch", "bio milch");
+    }
+
+    @Test
+    void suggestSearchTermsCapsAtTen() {
+        StringBuilder body = new StringBuilder("[");
+        for (int i = 0; i < 25; i++) {
+            body.append(i > 0 ? "," : "")
+                .append("{\"type\":\"SEARCH_SUGGESTION\",\"suggestion\":\"milch ").append(i).append("\"}");
+        }
+        stubSuggest(body.append("]").toString());
+
+        assertThat(adapter.suggestSearchTerms(SESSION, "milch")).hasSize(10);
+    }
+
+    @Test
+    void suggestSearchTermsReturnsNothingForAnUnrecognisedShape() {
+        // Autocomplete is a hint on top of a field the user can type into, so drift should cost
+        // them the hints and not the search.
+        stubSuggest("{\"suggestions\": [\"milch\"]}");
+
+        assertThat(adapter.suggestSearchTerms(SESSION, "milch")).isEmpty();
+    }
+
+    @Test
+    void suggestSearchTermsThrowsSessionExpiredWhenPicnicRefusesTheSession() {
+        wireMockServer.stubFor(get(urlPathEqualTo("/suggest"))
+            .willReturn(aResponse().withStatus(401)));
+
+        assertThatThrownBy(() -> adapter.suggestSearchTerms(SESSION, "milch"))
+            .isInstanceOf(PicnicSessionExpiredException.class);
+    }
+
+    @Test
+    void suggestSearchTermsThrowsUnavailableOn5xx() {
+        wireMockServer.stubFor(get(urlPathEqualTo("/suggest"))
+            .willReturn(aResponse().withStatus(503)));
+
+        assertThatThrownBy(() -> adapter.suggestSearchTerms(SESSION, "milch"))
+            .isInstanceOf(PicnicUnavailableException.class)
+            .hasMessageContaining("suggest");
+    }
+
+    @Test
+    void suggestSearchTermsThrowsUnavailableOnMalformedJsonBody() {
+        stubSuggest("not { json");
+
+        assertThatThrownBy(() -> adapter.suggestSearchTerms(SESSION, "milch"))
+            .isInstanceOf(PicnicUnavailableException.class);
+    }
+
     // --- cart ----------------------------------------------------------------------------
 
     @Test
@@ -492,6 +580,13 @@ class PicnicHttpAdapterTest {
     private void stubSuccessfulLogin() {
         wireMockServer.stubFor(post(urlPathEqualTo("/user/login"))
             .willReturn(aResponse().withStatus(200).withHeader("x-picnic-auth", "some-token")));
+    }
+
+    private void stubSuggest(String body) {
+        wireMockServer.stubFor(get(urlPathEqualTo("/suggest"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody(body)));
     }
 
     private void stubSearch(String body) {

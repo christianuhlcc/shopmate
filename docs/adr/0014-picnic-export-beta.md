@@ -175,6 +175,17 @@ regardless, so depth costs nothing, and five was routinely too few to contain
 the right product. The *manual picker* half of the decision is unchanged and
 still the point.
 
+**The query is the user's, not the item's.** This ADR assumed the item name
+*is* the search term. In practice item names are freitext written for a human
+reading a list, not for a product search — "test" matches a pregnancy test —
+and no amount of result depth repairs a bad query. The search term is now an
+editable field per item, seeded with the item name and backed by Picnic's own
+`/suggest` autocomplete. It stays a *query*, deliberately: overriding it
+changes what we ask Picnic and nothing on the list, so a bad guess costs one
+search rather than renaming an item the whole group sees. Option C below
+(remembering a confirmed pick per item name) is still deferred and would
+largely dissolve this problem for repeat items.
+
 ## Consequences
 
 - **No SLA on the underlying integration.** Picnic can change endpoints,

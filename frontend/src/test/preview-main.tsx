@@ -85,6 +85,57 @@ const LISTS =
         { id: 'l3', name: 'Hardware store', ownerId: 'u1', groupId: GROUP.id, createdAt: '2026-07-15T10:00:00Z' },
       ]
 
+/**
+ * Picnic candidates per item id — the export sheet asks for one item at a time. Items with
+ * no entry here answer with an empty list, which is the "this item will be skipped" path.
+ */
+const PICNIC_SUGGESTIONS: Record<string, { itemName: string; suggestions: unknown[] }> = {
+  i1: {
+    itemName: 'Äpfel',
+    suggestions: [
+      {
+        id: 'a1',
+        name: 'Elstar Äpfel, 1kg',
+        imageUrl: 'https://picnic.example/img/apples-elstar.jpg',
+        priceCents: 249,
+        unit: '1kg',
+      },
+      {
+        id: 'a2',
+        name: 'Bio Äpfel Jonagold, 1kg',
+        imageUrl: 'https://picnic.example/img/apples-jonagold.jpg',
+        priceCents: 329,
+        unit: '1kg',
+      },
+      // Deliberately missing imageUrl/priceCents/unit — exercises the
+      // "no thumbnail, no price" rendering path.
+      { id: 'a3', name: 'Äpfel lose' },
+    ],
+  },
+  i2: {
+    itemName: 'Kirschtomaten',
+    suggestions: [
+      {
+        id: 't1',
+        name: 'Kirschtomaten, 250g',
+        imageUrl: 'https://picnic.example/img/kirschtomaten.jpg',
+        priceCents: 179,
+        unit: '250g',
+      },
+      {
+        id: 't2',
+        name: 'Bio Kirschtomaten, 250g',
+        imageUrl: 'https://picnic.example/img/bio-kirschtomaten.jpg',
+        priceCents: 229,
+        unit: '250g',
+      },
+    ],
+  },
+  i6: { itemName: 'Milch', suggestions: [{ id: 'm1', name: 'Frische Vollmilch' }] },
+  // No matches at all — exercises the "this item will be skipped" path.
+  i4: { itemName: 'Vollkornbrot', suggestions: [] },
+}
+
 const NEVER = new Promise<Response>(() => {})
 
 function json(body: unknown): Promise<Response> {
@@ -143,7 +194,11 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
     // Unlinked by default — more useful to preview/screenshot than the linked state.
     return json({ linked: false })
   }
-  if (/^\/api\/lists\/[^/]+\/picnic\/suggestions$/.test(path) && method === 'POST') {
+  if (path === '/api/picnic/search-terms' && method === 'GET') {
+    return json({ terms: ['bio äpfel', 'äpfel lose', 'apfelsaft', 'apfelmus'] })
+  }
+  const suggestionsMatch = /^\/api\/lists\/[^/]+\/picnic\/suggestions\/([^/?]+)/.exec(path)
+  if (suggestionsMatch && method === 'POST') {
     // The `picnic-credentials` sheet preview drives the export sheet into its
     // credentials-missing error branch so the auto-click chain below can reach
     // PicnicCredentialsSheet — the only way that sheet is shown on this page.
@@ -155,59 +210,18 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response>
         ),
       )
     }
+    const itemId = suggestionsMatch[1]
+    // `path` is the pathname only, so the override has to come off the full url.
+    const overrideTerm = new URL(url, window.location.origin).searchParams.get('searchTerm')
+    const entry = PICNIC_SUGGESTIONS[itemId] ?? {
+      itemName: itemId,
+      suggestions: [],
+    }
     return json({
-      items: [
-        {
-          itemId: 'i1',
-          itemName: 'Äpfel',
-          suggestions: [
-            {
-              id: 'a1',
-              name: 'Elstar Äpfel, 1kg',
-              imageUrl: 'https://picnic.example/img/apples-elstar.jpg',
-              priceCents: 249,
-              unit: '1kg',
-            },
-            {
-              id: 'a2',
-              name: 'Bio Äpfel Jonagold, 1kg',
-              imageUrl: 'https://picnic.example/img/apples-jonagold.jpg',
-              priceCents: 329,
-              unit: '1kg',
-            },
-            // Deliberately missing imageUrl/priceCents/unit — exercises the
-            // "no thumbnail, no price" rendering path.
-            { id: 'a3', name: 'Äpfel lose' },
-          ],
-        },
-        {
-          itemId: 'i2',
-          itemName: 'Kirschtomaten',
-          suggestions: [
-            {
-              id: 't1',
-              name: 'Kirschtomaten, 250g',
-              imageUrl: 'https://picnic.example/img/kirschtomaten.jpg',
-              priceCents: 179,
-              unit: '250g',
-            },
-            {
-              id: 't2',
-              name: 'Bio Kirschtomaten, 250g',
-              imageUrl: 'https://picnic.example/img/bio-kirschtomaten.jpg',
-              priceCents: 229,
-              unit: '250g',
-            },
-          ],
-        },
-        {
-          itemId: 'i6',
-          itemName: 'Milch',
-          suggestions: [{ id: 'm1', name: 'Frische Vollmilch' }],
-        },
-        // No matches at all — exercises the "this item will be skipped" path.
-        { itemId: 'i4', itemName: 'Vollkornbrot', suggestions: [] },
-      ],
+      itemId,
+      itemName: entry.itemName,
+      searchTerm: overrideTerm ?? entry.itemName,
+      suggestions: entry.suggestions,
     })
   }
   if (/^\/api\/lists\/[^/]+\/picnic\/export$/.test(path) && method === 'POST') {

@@ -461,6 +461,18 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: searchTerm
+          in: query
+          required: false
+          description: |
+            Overrides what is sent to Picnic's search. Omit it and the item's own
+            name is used, which is the right default but often a poor query —
+            item names are freitext, and "test" matches a pregnancy test. The
+            client seeds an editable field with the item name and sends this once
+            the user changes it. Blank is treated as absent.
+          schema:
+            type: string
+            maxLength: 100
       responses:
         "200":
           description: Picnic article suggestions for the item
@@ -474,6 +486,46 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
+  /picnic/search-terms:
+    get:
+      tags: [PicnicExport]
+      operationId: getPicnicSearchTerms
+      summary: Autocomplete a Picnic search term
+      description: |
+        Picnic's own autocomplete, proxied. Cheap enough to call while the user
+        types — a response is a few hundred bytes and returns in well under the
+        ~2-3 s a full search costs, because it hits a different endpoint that
+        renders nothing.
+
+        Not list-scoped: it needs the caller's Picnic session and nothing else.
+        Requires a linked Picnic credential; if none is linked, responds 422
+        with code PICNIC_CREDENTIALS_MISSING. If the Picnic API itself is
+        unreachable, responds 502 with code PICNIC_UNAVAILABLE.
+      parameters:
+        - name: term
+          in: query
+          required: true
+          description: The partial term the user has typed so far.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Suggested search terms, most relevant first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicSearchTerms'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
         "422":
           $ref: '#/components/responses/UnprocessableEntity'
         "502":
@@ -928,15 +980,34 @@ components:
           nullable: true
           description: e.g. "500g", "Stück"
 
+    PicnicSearchTerms:
+      type: object
+      required: [terms]
+      properties:
+        terms:
+          type: array
+          maxItems: 10
+          description: |
+            Picnic's own autocomplete strings, e.g. for "Milch": h-milch,
+            milchreis, milch laktosefrei, milchschnitte, bio milch.
+          items:
+            type: string
+
     ItemSuggestions:
       type: object
-      required: [itemId, itemName, suggestions]
+      required: [itemId, itemName, searchTerm, suggestions]
       properties:
         itemId:
           type: string
           format: uuid
         itemName:
           type: string
+        searchTerm:
+          type: string
+          description: |
+            The term actually sent to Picnic — the item name unless the request
+            overrode it. Echoed back so a client that has moved on to a newer
+            term can recognise and discard a stale response.
         suggestions:
           type: array
           maxItems: 20

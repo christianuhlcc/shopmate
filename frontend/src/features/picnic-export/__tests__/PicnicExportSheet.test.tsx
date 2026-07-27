@@ -22,6 +22,7 @@ const ITEMS = [
 const MILCH = {
   itemId: 'item-1',
   itemName: 'Milch',
+  searchTerm: 'Milch',
   suggestions: [
     {
       id: 'art-1',
@@ -34,23 +35,38 @@ const MILCH = {
   ],
 }
 
-const BANANEN = { itemId: 'item-2', itemName: 'Bananen', suggestions: [] }
+const BANANEN = {
+  itemId: 'item-2',
+  itemName: 'Bananen',
+  searchTerm: 'Bananen',
+  suggestions: [],
+}
 
 const SUGGESTIONS_PATH = '/lists/{listId}/picnic/suggestions/{itemId}'
 const EXPORT_PATH = '/lists/{listId}/picnic/export'
+const SEARCH_TERMS_PATH = '/picnic/search-terms'
 
 function makeResult(overrides: Partial<{ added: number; skipped: number; failures: unknown[] }> = {}) {
   return { added: 1, skipped: 1, failures: [], ...overrides }
 }
 
-/** Routes mocked calls by path/itemId, so prefetching does not depend on call order. */
+/**
+ * Routes mocked calls by path/itemId, so prefetching does not depend on call order. A key of
+ * `itemId|term` answers a re-search under that term; a plain `itemId` is the default.
+ */
 function mockSuggestions(byItem: Record<string, unknown>, exportResult?: unknown) {
   mockedApi.POST.mockImplementation(
-    (path: string, opts?: { params?: { path?: { itemId?: string } } }) => {
+    (
+      path: string,
+      opts?: { params?: { path?: { itemId?: string }; query?: { searchTerm?: string } } },
+    ) => {
       if (path === EXPORT_PATH) {
         return Promise.resolve({ data: exportResult ?? makeResult(), error: undefined })
       }
-      const entry = byItem[opts?.params?.path?.itemId ?? '']
+      const itemId = opts?.params?.path?.itemId ?? ''
+      const term = opts?.params?.query?.searchTerm
+      const entry =
+        (term !== undefined ? byItem[`${itemId}|${term}`] : undefined) ?? byItem[itemId]
       if (entry === undefined) {
         return Promise.resolve({
           data: undefined,
@@ -80,6 +96,8 @@ async function renderStepper(exportResult?: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Autocomplete stays quiet unless a test opts in.
+  mockedApi.GET.mockResolvedValue({ data: { terms: [] }, error: undefined })
 })
 
 describe('PicnicExportSheet', () => {
@@ -100,7 +118,9 @@ describe('PicnicExportSheet', () => {
     await screen.findByText(/bio vollmilch/i)
 
     expect(mockedApi.POST).toHaveBeenCalledWith(SUGGESTIONS_PATH, {
-      params: { path: { listId: 'list-1', itemId: 'item-1' } },
+      // No searchTerm: the item's own name is the server's default, so the common path
+      // stays exactly as it was before the term became editable.
+      params: { path: { listId: 'list-1', itemId: 'item-1' }, query: {} },
     })
     expect(screen.getByText(/item 1 of 2/i)).toBeInTheDocument()
   })
@@ -112,7 +132,7 @@ describe('PicnicExportSheet', () => {
 
     await waitFor(() =>
       expect(mockedApi.POST).toHaveBeenCalledWith(SUGGESTIONS_PATH, {
-        params: { path: { listId: 'list-1', itemId: 'item-2' } },
+        params: { path: { listId: 'list-1', itemId: 'item-2' }, query: {} },
       }),
     )
   })
@@ -151,6 +171,173 @@ describe('PicnicExportSheet', () => {
       }),
     )
     expect(await screen.findByText(/added 1, skipped 1/i)).toBeInTheDocument()
+  })
+
+  describe('editable search term', () => {
+    const BIO = {
+      itemId: 'item-1',
+      itemName: 'Milch',
+      searchTerm: 'bio vollmilch',
+      suggestions: [{ id: 'art-9', name: 'Demeter Bio Vollmilch', priceCents: 189, unit: '1L' }],
+    }
+
+    it('seeds the field with the item name', async () => {
+      await renderStepper()
+
+      // The name is the right default query even though it is often a poor one — the
+      // point is that it is now visible and changeable.
+      expect(screen.getByLabelText(/search picnic for/i)).toHaveValue('Milch')
+    })
+
+    it('re-searches the item under a new term and re-defaults the pick', async () => {
+      mockSuggestions({ 'item-1': MILCH, 'item-1|bio vollmilch': BIO, 'item-2': BANANEN })
+      render(
+        <PicnicExportSheet
+          listId="list-1"
+          items={ITEMS}
+          onClose={vi.fn()}
+          onNeedsCredentials={vi.fn()}
+        />,
+      )
+      await screen.findByText(/bio vollmilch/i)
+      const user = userEvent.setup()
+
+      const field = screen.getByLabelText(/search picnic for/i)
+      await user.clear(field)
+      await user.type(field, 'bio vollmilch')
+      await user.click(screen.getByRole('button', { name: /^search$/i }))
+
+      expect(await screen.findByText(/demeter bio vollmilch/i)).toBeInTheDocument()
+      expect(mockedApi.POST).toHaveBeenCalledWith(SUGGESTIONS_PATH, {
+        params: {
+          path: { listId: 'list-1', itemId: 'item-1' },
+          query: { searchTerm: 'bio vollmilch' },
+        },
+      })
+
+      // The old pick is gone, so confirming cannot export a product that is no longer
+      // on screen.
+      await user.click(screen.getByRole('button', { name: /next/i }))
+      await user.click(await screen.findByRole('button', { name: /confirm export/i }))
+      await waitFor(() =>
+        expect(mockedApi.POST).toHaveBeenCalledWith(
+          EXPORT_PATH,
+          expect.objectContaining({
+            body: {
+              selections: [
+                { itemId: 'item-1', articleId: 'art-9' },
+                { itemId: 'item-2', articleId: undefined },
+              ],
+            },
+          }),
+        ),
+      )
+    })
+
+    it('leaves the item itself alone', async () => {
+      mockSuggestions({ 'item-1': MILCH, 'item-1|bio vollmilch': BIO, 'item-2': BANANEN })
+      render(
+        <PicnicExportSheet
+          listId="list-1"
+          items={ITEMS}
+          onClose={vi.fn()}
+          onNeedsCredentials={vi.fn()}
+        />,
+      )
+      await screen.findByText(/bio vollmilch/i)
+      const user = userEvent.setup()
+
+      const field = screen.getByLabelText(/search picnic for/i)
+      await user.clear(field)
+      await user.type(field, 'bio vollmilch{Enter}')
+      await screen.findByText(/demeter bio vollmilch/i)
+
+      // Overriding the query must not look like renaming an item everyone in the group
+      // can see — the heading still says what is on the list.
+      expect(screen.getByRole('heading', { name: 'Milch' })).toBeInTheDocument()
+    })
+
+    it('offers Picnic autocomplete while typing and searches a chosen term', async () => {
+      mockSuggestions({ 'item-1': MILCH, 'item-1|bio milch': BIO, 'item-2': BANANEN })
+      mockedApi.GET.mockResolvedValue({
+        data: { terms: ['h-milch', 'bio milch'] },
+        error: undefined,
+      })
+      render(
+        <PicnicExportSheet
+          listId="list-1"
+          items={ITEMS}
+          onClose={vi.fn()}
+          onNeedsCredentials={vi.fn()}
+        />,
+      )
+      await screen.findByText(/bio vollmilch/i)
+      const user = userEvent.setup()
+
+      const field = screen.getByLabelText(/search picnic for/i)
+      await user.clear(field)
+      await user.type(field, 'bio')
+
+      const option = await screen.findByRole('button', { name: 'bio milch' })
+      expect(mockedApi.GET).toHaveBeenCalledWith(SEARCH_TERMS_PATH, {
+        params: { query: { term: 'bio' } },
+      })
+
+      await user.click(option)
+
+      expect(await screen.findByText(/demeter bio vollmilch/i)).toBeInTheDocument()
+      expect(mockedApi.POST).toHaveBeenCalledWith(SUGGESTIONS_PATH, {
+        params: {
+          path: { listId: 'list-1', itemId: 'item-1' },
+          query: { searchTerm: 'bio milch' },
+        },
+      })
+    })
+
+    it('does not autocomplete a term that has already been searched', async () => {
+      await renderStepper()
+      const user = userEvent.setup()
+
+      // Focusing the untouched field shows the item name, which is what we just
+      // searched — asking Picnic to complete it would be a wasted call on every step.
+      await user.click(screen.getByLabelText(/search picnic for/i))
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      expect(mockedApi.GET).not.toHaveBeenCalled()
+    })
+
+    it('survives autocomplete failing', async () => {
+      mockedApi.GET.mockResolvedValue({
+        data: undefined,
+        error: { code: 'PICNIC_UNAVAILABLE', message: 'down' },
+      })
+      await renderStepper()
+      const user = userEvent.setup()
+
+      const field = screen.getByLabelText(/search picnic for/i)
+      await user.clear(field)
+      await user.type(field, 'bio')
+      await waitFor(() => expect(mockedApi.GET).toHaveBeenCalled())
+
+      // Hints are a convenience over a field the user can type into; losing them must
+      // not take the picker down with them.
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled()
+      expect(screen.getByText(/bio vollmilch/i)).toBeInTheDocument()
+    })
+
+    it('refuses to search a blank or unchanged term', async () => {
+      const { user } = await renderStepper()
+      await waitFor(() => expect(mockedApi.POST).toHaveBeenCalledTimes(2))
+
+      // Unchanged: nothing to redo.
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled()
+
+      const field = screen.getByLabelText(/search picnic for/i)
+      await user.clear(field)
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled()
+
+      expect(mockedApi.POST).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('honours a different pick', async () => {

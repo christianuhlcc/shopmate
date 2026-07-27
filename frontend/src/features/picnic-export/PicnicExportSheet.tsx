@@ -20,6 +20,9 @@ interface PicnicExportSheetProps {
 
 type Step = 'stepping' | 'submitting' | 'result' | 'error'
 
+/** Long enough that typing a word costs one autocomplete call, short enough to feel live. */
+const AUTOCOMPLETE_DEBOUNCE_MS = 250
+
 const CREDENTIALS_MISSING_MESSAGE = 'Link a Picnic account to export this list.'
 const SECOND_FACTOR_MESSAGE = 'Finish linking your Picnic account — it still needs the SMS code.'
 const SESSION_EXPIRED_MESSAGE = 'Your Picnic session has expired. Link your account again to keep exporting.'
@@ -71,8 +74,21 @@ export function PicnicExportSheet({
   const [relinkMessage, setRelinkMessage] = useState<string | null>(null)
   const [result, setResult] = useState<ExportResult | null>(null)
 
-  // Stops a prefetch and a navigation racing to fetch the same item twice.
-  const inFlight = useRef<Set<string>>(new Set())
+  // The term each item is *searched* with, and the text sitting in its field. They differ
+  // while the user is typing; committing a search makes them equal again. Both are keyed by
+  // item so stepping back to an earlier item shows what was done to it.
+  const [searchTermByItem, setSearchTermByItem] = useState<Record<string, string>>({})
+  const [draftByItem, setDraftByItem] = useState<Record<string, string>>({})
+  const [termOptions, setTermOptions] = useState<string[]>([])
+  const [termOptionsOpen, setTermOptionsOpen] = useState(false)
+
+  // Stops a prefetch and a navigation racing to fetch the same item twice — but keyed by the
+  // term as well, so re-searching an item with a new term is never mistaken for a duplicate.
+  const inFlight = useRef<Map<string, string>>(new Map())
+  // The most recent term requested per item. A response for anything else is stale and gets
+  // dropped: a slow search for "Milch" must not overwrite a fast one for "bio vollmilch".
+  const latestTerm = useRef<Map<string, string>>(new Map())
+  const latestAutocompleteQuery = useRef('')
   const cancelled = useRef(false)
   useEffect(() => {
     cancelled.current = false
@@ -82,17 +98,24 @@ export function PicnicExportSheet({
   }, [])
 
   const fetchItem = useCallback(
-    async (item: ExportableItem) => {
-      if (inFlight.current.has(item.id)) return
-      inFlight.current.add(item.id)
+    async (item: ExportableItem, term: string) => {
+      if (inFlight.current.get(item.id) === term) return
+      inFlight.current.set(item.id, term)
+      latestTerm.current.set(item.id, term)
 
       const { data, error: apiError } = await apiClient.POST(
         '/lists/{listId}/picnic/suggestions/{itemId}',
-        { params: { path: { listId, itemId: item.id } } },
+        {
+          params: {
+            path: { listId, itemId: item.id },
+            // Omitted when it is just the item's name — that is what the server defaults to.
+            query: term === item.name ? {} : { searchTerm: term },
+          },
+        },
       )
 
-      inFlight.current.delete(item.id)
-      if (cancelled.current) return
+      if (inFlight.current.get(item.id) === term) inFlight.current.delete(item.id)
+      if (cancelled.current || latestTerm.current.get(item.id) !== term) return
 
       if (apiError || !data) {
         const relink = relinkMessageFor(apiError?.code)
@@ -124,13 +147,16 @@ export function PicnicExportSheet({
   const current = items[index]
   const currentData = current ? suggestionsByItem[current.id] : undefined
   const currentError = current ? errorByItem[current.id] : undefined
+  // An item is searched for its own name until the user says otherwise.
+  const currentTerm = current ? (searchTermByItem[current.id] ?? current.name) : ''
+  const currentDraft = current ? (draftByItem[current.id] ?? currentTerm) : ''
 
   useEffect(() => {
     if (step !== 'stepping' || !current) return
     if (!suggestionsByItem[current.id] && !errorByItem[current.id]) {
-      void fetchItem(current)
+      void fetchItem(current, currentTerm)
     }
-  }, [step, current, suggestionsByItem, errorByItem, fetchItem])
+  }, [step, current, currentTerm, suggestionsByItem, errorByItem, fetchItem])
 
   // Prefetch the next item as soon as this one is on screen, so the user's
   // decision time doubles as its load time.
@@ -138,9 +164,67 @@ export function PicnicExportSheet({
     if (step !== 'stepping' || !currentData) return
     const next = items[index + 1]
     if (next && !suggestionsByItem[next.id] && !errorByItem[next.id]) {
-      void fetchItem(next)
+      void fetchItem(next, searchTermByItem[next.id] ?? next.name)
     }
-  }, [step, currentData, index, items, suggestionsByItem, errorByItem, fetchItem])
+  }, [step, currentData, index, items, suggestionsByItem, errorByItem, searchTermByItem, fetchItem])
+
+  // Autocomplete only while the field is focused and showing something not yet searched —
+  // otherwise every step through the list would fire a pointless call.
+  useEffect(() => {
+    if (!termOptionsOpen) return
+    const query = currentDraft.trim()
+    if (!query || query === currentTerm) {
+      setTermOptions([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      latestAutocompleteQuery.current = query
+      const { data } = await apiClient.GET('/picnic/search-terms', {
+        params: { query: { term: query } },
+      })
+      if (cancelled.current || latestAutocompleteQuery.current !== query) return
+      // Failures are swallowed on purpose: these are hints over a field the user can type
+      // into, so losing them should cost nothing visible.
+      setTermOptions(data?.terms ?? [])
+    }, AUTOCOMPLETE_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [termOptionsOpen, currentDraft, currentTerm])
+
+  /**
+   * Re-runs the search for one item under a new term. The cached results and the previous
+   * pick are dropped rather than kept: the old selection almost never survives a new search,
+   * and leaving it would silently export a product the user can no longer see.
+   */
+  function commitSearch(item: ExportableItem, rawTerm: string) {
+    const term = rawTerm.trim()
+    setTermOptions([])
+    setTermOptionsOpen(false)
+    if (!term || term === (searchTermByItem[item.id] ?? item.name)) return
+
+    setDraftByItem((prev) => ({ ...prev, [item.id]: term }))
+    setSearchTermByItem((prev) => ({ ...prev, [item.id]: term }))
+    setSuggestionsByItem((prev) => {
+      const next = { ...prev }
+      delete next[item.id]
+      return next
+    })
+    setErrorByItem((prev) => {
+      const next = { ...prev }
+      delete next[item.id]
+      return next
+    })
+    setSelections((prev) => {
+      const next = { ...prev }
+      delete next[item.id]
+      return next
+    })
+  }
+
+  function goTo(nextIndex: number) {
+    setTermOptions([])
+    setTermOptionsOpen(false)
+    setIndex(nextIndex)
+  }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -242,7 +326,70 @@ export function PicnicExportSheet({
             <p className="text-label text-ink-mute mt-4 mb-1">
               Item {index + 1} of {items.length}
             </p>
-            <h3 className="text-body font-semibold text-ink mb-3">{current.name}</h3>
+            <h3 className="text-body font-semibold text-ink mb-2">{current.name}</h3>
+
+            <form
+              className="relative mb-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                commitSearch(current, currentDraft)
+              }}
+            >
+              <label
+                htmlFor={`picnic-search-${current.id}`}
+                className="block text-label text-ink-mute mb-1"
+              >
+                Search Picnic for
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id={`picnic-search-${current.id}`}
+                  type="text"
+                  value={currentDraft}
+                  autoComplete="off"
+                  maxLength={100}
+                  onChange={(e) =>
+                    setDraftByItem((prev) => ({ ...prev, [current.id]: e.target.value }))
+                  }
+                  onFocus={() => setTermOptionsOpen(true)}
+                  // Deferred so a click on a suggestion below still registers.
+                  onBlur={() => setTimeout(() => setTermOptionsOpen(false), 0)}
+                  className="flex-1 min-w-0 min-h-touch px-3 py-2 border border-line rounded-xl text-body text-ink bg-panel focus:outline-none focus:ring-2 focus:ring-marigold-deep"
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    step === 'submitting' ||
+                    !currentDraft.trim() ||
+                    currentDraft.trim() === currentTerm
+                  }
+                  className="pressable min-h-touch px-4 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground disabled:opacity-50"
+                >
+                  Search
+                </button>
+              </div>
+
+              {termOptionsOpen && termOptions.length > 0 && (
+                <ul
+                  aria-label="Suggested search terms"
+                  className="absolute z-sheet left-0 right-0 mt-1 bg-panel border border-line rounded-xl shadow-lg overflow-hidden"
+                >
+                  {termOptions.map((term) => (
+                    <li key={term}>
+                      <button
+                        type="button"
+                        // Beats the input's blur, which would otherwise close this first.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => commitSearch(current, term)}
+                        className="w-full text-left px-3 py-2 text-body text-ink hover:bg-ground"
+                      >
+                        {term}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </form>
 
             {!currentData && !currentError && (
               <div role="status" aria-label="Loading suggestions" className="space-y-3">
@@ -349,7 +496,7 @@ export function PicnicExportSheet({
               {index > 0 && (
                 <button
                   type="button"
-                  onClick={() => setIndex((i) => i - 1)}
+                  onClick={() => goTo(index - 1)}
                   disabled={step === 'submitting'}
                   className="pressable min-h-touch px-4 py-3 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground disabled:opacity-50"
                 >
@@ -358,7 +505,7 @@ export function PicnicExportSheet({
               )}
               <button
                 type="button"
-                onClick={isLast ? handleConfirm : () => setIndex((i) => i + 1)}
+                onClick={isLast ? handleConfirm : () => goTo(index + 1)}
                 disabled={step === 'submitting'}
                 className="pressable flex-1 min-h-touch px-4 py-3 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50"
               >

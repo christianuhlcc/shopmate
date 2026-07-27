@@ -47,8 +47,21 @@ public interface PicnicExportUseCase {
      * if linking was never completed, and
      * {@link com.shopmate.domain.model.PicnicSessionExpiredException} if the stored session is
      * no longer accepted.
+     *
+     * @param searchTermOverride what to search for instead of the item's name; null or blank
+     *                           falls back to the name. Item names are freitext and often make
+     *                           poor queries, so the user can replace one without renaming the
+     *                           item on a list other people share.
      */
-    ItemSuggestion getItemSuggestions(UUID listId, UUID itemId, UUID requestingUserId);
+    ItemSuggestion getItemSuggestions(
+        UUID listId, UUID itemId, UUID requestingUserId, String searchTermOverride);
+
+    /**
+     * Autocompletes a partial search term against Picnic. Needs a linked session and throws the
+     * same credential exceptions as {@link #getItemSuggestions}, but touches no list — it is
+     * about the query, not about anything the caller owns.
+     */
+    List<String> suggestSearchTerms(UUID requestingUserId, String partialTerm);
 
     ExportResult export(UUID listId, UUID requestingUserId, List<ExportSelection> selections);
 }

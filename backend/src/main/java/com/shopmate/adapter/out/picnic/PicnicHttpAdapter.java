@@ -63,6 +63,15 @@ public class PicnicHttpAdapter implements PicnicClientPort {
     // before that was the unverified session being refused, not the endpoint being wrong.
     private static final String SEARCH_PATH = "/pages/search-page-results?search_term=";
 
+    // Unlike search, this one is still a plain flat endpoint: it answers with a bare array of
+    // {type,id,suggestion} objects and nothing else. Matches the maintained reference client
+    // (MRVDH/picnic-api, getSuggestions), and a live response for "Milch" was 524 bytes.
+    private static final String SUGGEST_PATH = "/suggest?search_term=";
+
+    // Picnic returns around seven; this only bounds a pathological response, since these are
+    // rendered as a list under a text field.
+    private static final int MAX_TERM_SUGGESTIONS = 10;
+
     // Header set mirrored from the maintained Node reference client (MRVDH/picnic-api,
     // src/http-client.ts) — Picnic's page endpoints 500 or 403 without them. The agent string
     // encodes an app version; a stale one is a plausible rejection cause, so it is kept current
@@ -135,27 +144,39 @@ public class PicnicHttpAdapter implements PicnicClientPort {
 
     @Override
     public List<ArticleSuggestion> searchArticles(PicnicSession session, String term) {
-        String encodedTerm = URLEncoder.encode(term, StandardCharsets.UTF_8);
-        HttpRequest request = authedRequest(baseUrl + SEARCH_PATH + encodedTerm, session)
-            .GET()
-            .build();
-
-        HttpResponse<byte[]> response = send(request);
-        rejectIfSessionRefused(response.statusCode(), "search");
-        if (!isSuccess(response.statusCode())) {
-            throw new PicnicUnavailableException("Picnic search failed with unexpected status " + response.statusCode());
-        }
-
-        JsonNode root;
-        try {
-            root = objectMapper.readTree(bodyOf(response));
-        } catch (JsonProcessingException e) {
-            throw new PicnicUnavailableException("Picnic search returned a malformed JSON body", e);
-        }
-
+        JsonNode root = getJson(session, SEARCH_PATH + encode(term), "search");
         List<ArticleSuggestion> results = new ArrayList<>();
         collectSellingUnits(root, results);
         return results;
+    }
+
+    /**
+     * Reads the flat {@code [{type,id,suggestion}, …]} array Picnic answers autocomplete with.
+     * Only the {@code suggestion} text is kept: the ids are Picnic's own and mean nothing to a
+     * later search, which takes the term as free text.
+     *
+     * <p>An unrecognised shape yields no suggestions rather than an error. Autocomplete is a
+     * convenience on top of a field the user can always type into, so drift here should cost
+     * them the hints, not the search.
+     */
+    @Override
+    public List<String> suggestSearchTerms(PicnicSession session, String partialTerm) {
+        JsonNode root = getJson(session, SUGGEST_PATH + encode(partialTerm), "suggest");
+        if (root == null || !root.isArray()) {
+            return List.of();
+        }
+
+        List<String> terms = new ArrayList<>();
+        for (JsonNode node : root) {
+            String suggestion = textOrNull(node.get("suggestion"));
+            if (suggestion != null && !terms.contains(suggestion)) {
+                terms.add(suggestion);
+            }
+            if (terms.size() >= MAX_TERM_SUGGESTIONS) {
+                break;
+            }
+        }
+        return terms;
     }
 
     @Override
@@ -260,6 +281,32 @@ public class PicnicHttpAdapter implements PicnicClientPort {
             Thread.currentThread().interrupt();
             throw new PicnicUnavailableException("Interrupted while calling Picnic", e);
         }
+    }
+
+    /**
+     * The shared shape of both read calls: authenticated GET, session-refusal and status
+     * checks, then a parsed body. {@code operation} names the call in whatever error comes out.
+     */
+    private JsonNode getJson(PicnicSession session, String pathAndQuery, String operation) {
+        HttpResponse<byte[]> response = send(
+            authedRequest(baseUrl + pathAndQuery, session).GET().build());
+
+        rejectIfSessionRefused(response.statusCode(), operation);
+        if (!isSuccess(response.statusCode())) {
+            throw new PicnicUnavailableException(
+                "Picnic " + operation + " failed with unexpected status " + response.statusCode());
+        }
+
+        try {
+            return objectMapper.readTree(bodyOf(response));
+        } catch (JsonProcessingException e) {
+            throw new PicnicUnavailableException(
+                "Picnic " + operation + " returned a malformed JSON body", e);
+        }
+    }
+
+    private static String encode(String term) {
+        return URLEncoder.encode(term, StandardCharsets.UTF_8);
     }
 
     /**

@@ -459,25 +459,38 @@ Measured against the live API, then fixed:
 - **20 suggestions instead of 5.** Picnic returns ~120 per search and we parse
   the whole response regardless, so depth is free.
 
-### Next: query quality (not started — for a fresh session)
+### Query quality (done 2026-07-27)
 
-The remaining weakness is not result *depth*, it is the *query*. Item names are
-freitext and often make poor search terms: "test" returns
-*TESTAmed Schwangerschafts-Frühtest*, and no number of results fixes that.
+The weakness was never result *depth*, it was the *query*: item names are
+freitext and often search badly ("test" returns *TESTAmed
+Schwangerschafts-Frühtest*). Built:
 
-Suggested follow-up:
+- **Editable search term per item.** `searchTerm` is now an optional query
+  parameter on `POST /lists/{listId}/picnic/suggestions/{itemId}`; omitted, the
+  server still falls back to the item name, so the default path is byte-for-byte
+  what it was. The sheet seeds a text field with the item name and re-searches
+  on submit. Overriding is a *query*, not a rename — the item on the shared list
+  is untouched, and `ItemSuggestions.searchTerm` echoes back what was actually
+  searched so the client can discard a response for a term it has moved on from.
+- **Autocomplete**, via new `GET /picnic/search-terms?term=`, proxying Picnic's
+  `GET /suggest?search_term=`. That endpoint is still flat — a bare
+  `[{type,id,suggestion}, …]` array, unlike search — and cheap: ~524 bytes,
+  no server-side render. Debounced 250 ms, and an unrecognised shape or a
+  failure yields no hints rather than an error, since the field works without
+  them.
+- A re-search **drops the previous pick** for that item rather than keeping it:
+  the old selection rarely survives a new search, and holding it would export a
+  product the user can no longer see.
 
-- Add an **editable search term per item** in the export sheet, seeded with the
-  item name, so a user can type "bio vollmilch" when "Milch" is not landing.
-  This needs the term as a query parameter on the per-item suggestions endpoint,
-  which currently derives it from the item name server-side.
-- Back it with Picnic's `GET /suggest?search_term=` autocomplete. Verified live:
-  524 bytes, and for "Milch" it returns `h-milch`, `milchreis`,
-  `milch laktosefrei`, `milchschnitte`, `bio milch`, `milchbrötchen`, `h milch`.
-  Cheap enough to call on every keystroke.
-- Worth deciding at the same time whether a confirmed pick should be remembered
-  per item name — that is ADR-0014's deferred Option C, and it would remove the
-  query problem entirely for repeat items.
+Not done, and still worth deciding: whether a confirmed pick should be
+remembered per item name. That is ADR-0014's deferred Option C and would remove
+the query problem entirely for repeat items.
+
+Verified with `./gradlew clean check` (433 tests, ArchUnit, and the 90%
+line/branch gate) and `npm run test:coverage` (242 tests, 90% gate), both green.
+The `check` run needs the colima environment from PLAN.md's "Current state" —
+without `JAVA_TOOL_OPTIONS=-Dapi.version=1.44` the six Testcontainers ITs cannot
+start and drag the bundle under the gate.
 
 ### If something's off
 
