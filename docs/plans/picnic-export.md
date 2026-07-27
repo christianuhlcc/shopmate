@@ -436,11 +436,10 @@ Both blockers were fixed and re-verified against the real account:
   per item (e.g. `s1018863 · 115 · 1L · Edeka Bio Fettarme H-Milch 1,5%`), and
   the picker renders them with working thumbnails.
 
-**What is still not proven:** `POST /cart/add_product`. Search returns
-`s`-prefixed selling-unit ids and the page's own ADD action uses that same id,
-so it should be accepted — but no write to a real cart has ever been made.
-That is steps 6–7, and it is the last thing standing between this branch and a
-PR.
+**The cart write is proven too (2026-07-27).** `POST /cart/add_product` accepts
+the `s`-prefixed selling-unit id that search returns, as the page's own ADD
+action suggested it would. Verified by hand against a real Picnic cart (D2 steps
+6–7), which was the last unverified assumption in this plan.
 
 ### Performance (done 2026-07-26)
 
@@ -502,11 +501,11 @@ regression case to `PicnicHttpAdapterTest` (WireMock stub with the *real*
 response shape you observed) rather than adjusting it blind — then re-run
 this checklist from step 5.
 
-### After D2 passes
+### D2 complete (2026-07-27)
 
-No PR exists yet for this branch. Once you're satisfied, open one manually
-(or ask Claude Code to) — the feature is one PR per the original brief, so
-everything from Phase A through D1 plus your D2 fixes (if any) ships together.
+Every step passes, including the cart write. The feature ships as one PR per the
+original brief — Phase A through D1, plus the 2FA and search-parsing fixes, the
+performance work, and the editable search term.
 
 ## Critical files
 

@@ -1,7 +1,8 @@
-# ADR-0014: Picnic export (beta) — Java re-implementation of the unofficial API, per-item top-5 picker
+# ADR-0014: Picnic export (beta) — Java re-implementation of the unofficial API, per-item manual picker
 
 Date: 2026-07-26 · Status: Accepted, amended 2026-07-26 (see
 [Amendment: second-factor authentication](#amendment-2026-07-26-second-factor-authentication))
+and 2026-07-27 (per-item fetching, 20 suggestions, editable search term).
 
 ## Context
 
