@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '../../api/client'
 import type { components } from '../../api/schema'
 
 type ItemSuggestions = components['schemas']['ItemSuggestions']
 type ExportResult = components['schemas']['ExportResult']
 
+/** The minimum an item needs to be exportable — the page already has both. */
+export interface ExportableItem {
+  id: string
+  name: string
+}
+
 interface PicnicExportSheetProps {
   listId: string
+  items: ExportableItem[]
   onClose: () => void
   onNeedsCredentials: () => void
 }
 
-// Small internal state machine — this is one component with state
-// transitions, not separate "suggestions" and "confirm/result" components.
-type Step = 'loading' | 'error' | 'picking' | 'submitting' | 'result'
+type Step = 'stepping' | 'submitting' | 'result' | 'error'
 
 const CREDENTIALS_MISSING_MESSAGE = 'Link a Picnic account to export this list.'
 const SECOND_FACTOR_MESSAGE = 'Finish linking your Picnic account — it still needs the SMS code.'
@@ -42,48 +47,100 @@ function formatPrice(priceCents?: number | null): string | null {
 }
 
 /**
- * Bottom sheet that exports a list's active items to a Picnic cart. Reuses
- * the sheet-backdrop/sheet-panel idiom from GroupSheet. Drives itself
- * through a single step machine: fetch per-item suggestions, let the user
- * pick an article (or skip) per item, submit the selections, show the
- * result. Any credentials/availability failure — on either the initial
- * fetch or the final submit — is funneled through the same error branch.
+ * Bottom sheet that exports a list's active items to a Picnic cart, one item at a
+ * time. Each Picnic search costs ~2-3 s of render on their side, so fetching a
+ * whole list up front made the wait grow with list size and paid for items the
+ * user was about to skip. Stepping keeps time-to-first-choice constant, and the
+ * next item is prefetched while the user decides — which hides almost all of that
+ * latency, since deciding takes about as long as the fetch.
+ *
+ * The cart write still happens once at the end: adding as you go would leave a
+ * half-filled real cart behind whenever someone abandons midway.
  */
-export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: PicnicExportSheetProps) {
-  const [step, setStep] = useState<Step>('loading')
-  const [items, setItems] = useState<ItemSuggestions[]>([])
+export function PicnicExportSheet({
+  listId,
+  items,
+  onClose,
+  onNeedsCredentials,
+}: PicnicExportSheetProps) {
+  const [step, setStep] = useState<Step>('stepping')
+  const [index, setIndex] = useState(0)
+  const [suggestionsByItem, setSuggestionsByItem] = useState<Record<string, ItemSuggestions>>({})
+  const [errorByItem, setErrorByItem] = useState<Record<string, string>>({})
   const [selections, setSelections] = useState<Record<string, string | undefined>>({})
   const [relinkMessage, setRelinkMessage] = useState<string | null>(null)
   const [result, setResult] = useState<ExportResult | null>(null)
 
+  // Stops a prefetch and a navigation racing to fetch the same item twice.
+  const inFlight = useRef<Set<string>>(new Set())
+  const cancelled = useRef(false)
   useEffect(() => {
-    let cancelled = false
-    apiClient
-      .POST('/lists/{listId}/picnic/suggestions', { params: { path: { listId } } })
-      .then(({ data, error: apiError }) => {
-        if (cancelled) return
-        if (apiError || !data) {
-          setRelinkMessage(relinkMessageFor(apiError?.code))
+    cancelled.current = false
+    return () => {
+      cancelled.current = true
+    }
+  }, [])
+
+  const fetchItem = useCallback(
+    async (item: ExportableItem) => {
+      if (inFlight.current.has(item.id)) return
+      inFlight.current.add(item.id)
+
+      const { data, error: apiError } = await apiClient.POST(
+        '/lists/{listId}/picnic/suggestions/{itemId}',
+        { params: { path: { listId, itemId: item.id } } },
+      )
+
+      inFlight.current.delete(item.id)
+      if (cancelled.current) return
+
+      if (apiError || !data) {
+        const relink = relinkMessageFor(apiError?.code)
+        if (relink) {
+          // Nothing about this is per-item — the whole sheet is dead until the user
+          // re-links, so stop rather than letting them step on into more failures.
+          setRelinkMessage(relink)
           setStep('error')
           return
         }
-        setItems(data.items)
-        // Default selection per item: its first suggestion, or "skip" (undefined)
-        // when there are none.
-        setSelections(
-          Object.fromEntries(data.items.map((item) => [item.itemId, item.suggestions[0]?.id])),
-        )
-        setStep('picking')
+        setErrorByItem((prev) => ({ ...prev, [item.id]: GENERIC_ERROR }))
+        return
+      }
+
+      setSuggestionsByItem((prev) => ({ ...prev, [item.id]: data }))
+      setErrorByItem((prev) => {
+        const next = { ...prev }
+        delete next[item.id]
+        return next
       })
-      .catch(() => {
-        if (cancelled) return
-        setRelinkMessage(null)
-        setStep('error')
-      })
-    return () => {
-      cancelled = true
+      // Default to the top match; the user overrides or skips.
+      setSelections((prev) =>
+        item.id in prev ? prev : { ...prev, [item.id]: data.suggestions[0]?.id },
+      )
+    },
+    [listId],
+  )
+
+  const current = items[index]
+  const currentData = current ? suggestionsByItem[current.id] : undefined
+  const currentError = current ? errorByItem[current.id] : undefined
+
+  useEffect(() => {
+    if (step !== 'stepping' || !current) return
+    if (!suggestionsByItem[current.id] && !errorByItem[current.id]) {
+      void fetchItem(current)
     }
-  }, [listId])
+  }, [step, current, suggestionsByItem, errorByItem, fetchItem])
+
+  // Prefetch the next item as soon as this one is on screen, so the user's
+  // decision time doubles as its load time.
+  useEffect(() => {
+    if (step !== 'stepping' || !currentData) return
+    const next = items[index + 1]
+    if (next && !suggestionsByItem[next.id] && !errorByItem[next.id]) {
+      void fetchItem(next)
+    }
+  }, [step, currentData, index, items, suggestionsByItem, errorByItem, fetchItem])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -99,8 +156,8 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
       params: { path: { listId } },
       body: {
         selections: items.map((item) => ({
-          itemId: item.itemId,
-          articleId: selections[item.itemId],
+          itemId: item.id,
+          articleId: selections[item.id],
         })),
       },
     })
@@ -114,8 +171,10 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
   }
 
   function itemNameFor(itemId: string): string {
-    return items.find((item) => item.itemId === itemId)?.itemName ?? itemId
+    return items.find((item) => item.id === itemId)?.name ?? itemId
   }
+
+  const isLast = index === items.length - 1
 
   return (
     <div
@@ -130,23 +189,29 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
         aria-labelledby="picnic-export-sheet-title"
         className="sheet-panel bg-panel rounded-2xl shadow-xl p-6 w-full max-w-sm z-sheet max-h-[80vh] overflow-y-auto"
       >
-        <h2 id="picnic-export-sheet-title" className="text-title font-semibold text-ink mb-1">
-          Export to Picnic
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="picnic-export-sheet-title" className="text-title font-semibold text-ink mb-1">
+            Export to Picnic
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="pressable -mt-1 -mr-1 min-h-touch min-w-touch rounded-full flex items-center justify-center text-ink-soft hover:bg-ground"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M6 6l8 8M14 6l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
         <span className="inline-block mb-3 text-label font-semibold text-honey-deep bg-marigold-tint rounded-full px-2 py-0.5">
           Beta — uses an unofficial Picnic API
         </span>
-
-        {step === 'loading' && (
-          <div role="status" aria-label="Loading suggestions" className="space-y-3 mt-4">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="space-y-2">
-                <div className="h-4 w-2/5 rounded bg-line animate-pulse" />
-                <div className="h-3 w-3/5 rounded bg-line/70 animate-pulse" />
-              </div>
-            ))}
-          </div>
-        )}
 
         {step === 'error' &&
           (relinkMessage ? (
@@ -166,93 +231,140 @@ export function PicnicExportSheet({ listId, onClose, onNeedsCredentials }: Picni
             </div>
           ))}
 
-        {(step === 'picking' || step === 'submitting') && (
+        {step !== 'error' && items.length === 0 && (
+          <p className="text-body text-ink-soft mt-4">
+            Nothing to export — every item on this list is already checked off.
+          </p>
+        )}
+
+        {(step === 'stepping' || step === 'submitting') && current && (
           <>
-            <ul className="divide-y divide-line -mx-2 mb-4">
-              {items.map((item) => (
-                <li key={item.itemId} className="px-2 py-3">
-                  <h3 className="text-body font-semibold text-ink mb-2">{item.itemName}</h3>
+            <p className="text-label text-ink-mute mt-4 mb-1">
+              Item {index + 1} of {items.length}
+            </p>
+            <h3 className="text-body font-semibold text-ink mb-3">{current.name}</h3>
 
-                  {item.suggestions.length === 0 ? (
-                    <p className="text-label text-ink-mute">
-                      No matches found — this item will be skipped.
-                    </p>
-                  ) : (
-                    <div
-                      role="radiogroup"
-                      aria-label={`Choose a Picnic product for ${item.itemName}`}
-                      className="space-y-1"
+            {!currentData && !currentError && (
+              <div role="status" aria-label="Loading suggestions" className="space-y-3">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="h-4 w-2/5 rounded bg-line animate-pulse" />
+                    <div className="h-3 w-3/5 rounded bg-line/70 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {currentError && (
+              <div className="mt-1">
+                <p
+                  role="alert"
+                  className="text-body text-danger bg-danger-tint border border-danger/25 rounded-xl px-3 py-2 mb-3"
+                >
+                  {currentError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setErrorByItem((prev) => {
+                      const next = { ...prev }
+                      delete next[current.id]
+                      return next
+                    })
+                  }
+                  className="pressable w-full min-h-touch px-4 py-2.5 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground"
+                >
+                  Try this item again
+                </button>
+              </div>
+            )}
+
+            {currentData && currentData.suggestions.length === 0 && (
+              <p className="text-label text-ink-mute">
+                No matches found — this item will be skipped.
+              </p>
+            )}
+
+            {currentData && currentData.suggestions.length > 0 && (
+              <div
+                role="radiogroup"
+                aria-label={`Choose a Picnic product for ${current.name}`}
+                className="space-y-1"
+              >
+                {currentData.suggestions.map((suggestion) => {
+                  const price = formatPrice(suggestion.priceCents)
+                  return (
+                    <label
+                      key={suggestion.id}
+                      className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-ground cursor-pointer"
                     >
-                      {item.suggestions.map((suggestion) => {
-                        const price = formatPrice(suggestion.priceCents)
-                        return (
-                          <label
-                            key={suggestion.id}
-                            className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-ground cursor-pointer"
-                          >
-                            <input
-                              type="radio"
-                              name={`item-${item.itemId}`}
-                              checked={selections[item.itemId] === suggestion.id}
-                              onChange={() =>
-                                setSelections((prev) => ({ ...prev, [item.itemId]: suggestion.id }))
-                              }
-                              className="accent-marigold-deep h-4 w-4 flex-shrink-0"
-                            />
-                            {suggestion.imageUrl ? (
-                              <img
-                                src={suggestion.imageUrl}
-                                alt=""
-                                loading="lazy"
-                                className="w-8 h-8 rounded object-cover flex-shrink-0 bg-line"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
-                                }}
-                              />
-                            ) : (
-                              <span
-                                aria-hidden="true"
-                                className="w-8 h-8 rounded bg-line flex-shrink-0"
-                              />
-                            )}
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-body text-ink truncate">
-                                {suggestion.name}
-                                {suggestion.unit ? ` (${suggestion.unit})` : ''}
-                              </span>
-                            </span>
-                            {price && (
-                              <span className="text-label text-ink-mute flex-shrink-0">{price}</span>
-                            )}
-                          </label>
-                        )
-                      })}
-                      <label className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-ground cursor-pointer">
-                        <input
-                          type="radio"
-                          name={`item-${item.itemId}`}
-                          checked={selections[item.itemId] === undefined}
-                          onChange={() =>
-                            setSelections((prev) => ({ ...prev, [item.itemId]: undefined }))
-                          }
-                          className="accent-marigold-deep h-4 w-4 flex-shrink-0"
+                      <input
+                        type="radio"
+                        name={`item-${current.id}`}
+                        checked={selections[current.id] === suggestion.id}
+                        onChange={() =>
+                          setSelections((prev) => ({ ...prev, [current.id]: suggestion.id }))
+                        }
+                        className="accent-marigold-deep h-4 w-4 flex-shrink-0"
+                      />
+                      {suggestion.imageUrl ? (
+                        <img
+                          src={suggestion.imageUrl}
+                          alt=""
+                          loading="lazy"
+                          className="w-8 h-8 rounded object-cover flex-shrink-0 bg-line"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
                         />
-                        <span className="text-body text-ink-soft">Skip this item</span>
-                      </label>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+                      ) : (
+                        <span aria-hidden="true" className="w-8 h-8 rounded bg-line flex-shrink-0" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-body text-ink truncate">
+                          {suggestion.name}
+                          {suggestion.unit ? ` (${suggestion.unit})` : ''}
+                        </span>
+                      </span>
+                      {price && (
+                        <span className="text-label text-ink-mute flex-shrink-0">{price}</span>
+                      )}
+                    </label>
+                  )
+                })}
+                <label className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-ground cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`item-${current.id}`}
+                    checked={selections[current.id] === undefined}
+                    onChange={() => setSelections((prev) => ({ ...prev, [current.id]: undefined }))}
+                    className="accent-marigold-deep h-4 w-4 flex-shrink-0"
+                  />
+                  <span className="text-body text-ink-soft">Skip this item</span>
+                </label>
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={step === 'submitting'}
-              className="pressable w-full min-h-touch px-4 py-3 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50"
-            >
-              {step === 'submitting' ? 'Exporting…' : 'Confirm export'}
-            </button>
+            <div className="flex gap-2 mt-5">
+              {index > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIndex((i) => i - 1)}
+                  disabled={step === 'submitting'}
+                  className="pressable min-h-touch px-4 py-3 border border-line rounded-full text-body font-semibold text-ink-soft hover:bg-ground disabled:opacity-50"
+                >
+                  Back
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={isLast ? handleConfirm : () => setIndex((i) => i + 1)}
+                disabled={step === 'submitting'}
+                className="pressable flex-1 min-h-touch px-4 py-3 bg-marigold text-ink rounded-full text-body font-semibold hover:bg-marigold-deep disabled:opacity-50"
+              >
+                {step === 'submitting' ? 'Exporting…' : isLast ? 'Confirm export' : 'Next'}
+              </button>
+            </div>
           </>
         )}
 

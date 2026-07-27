@@ -22,6 +22,12 @@ export function ShoppingListPage() {
   } = useShoppingList(listId!)
   const [activeSheet, setActiveSheet] = useState<'export' | 'credentials' | null>(null)
 
+  // Derived here rather than fetched: the page already holds the authoritative items,
+  // and the backend re-checks each one when its suggestions are requested.
+  const exportableItems = items
+    .filter((item) => !item.checked.value)
+    .map((item) => ({ id: item.id, name: item.name.value }))
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-ground">
@@ -133,6 +139,7 @@ export function ShoppingListPage() {
       {activeSheet === 'export' && (
         <PicnicExportSheet
           listId={listId!}
+          items={exportableItems}
           onClose={() => setActiveSheet(null)}
           onNeedsCredentials={() => setActiveSheet('credentials')}
         />
