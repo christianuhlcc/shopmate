@@ -4,11 +4,17 @@ import com.shopmate.domain.model.AccessForbiddenException;
 import com.shopmate.domain.model.AlreadyInGroupException;
 import com.shopmate.domain.model.GroupNameRequiredException;
 import com.shopmate.domain.model.InvalidItemException;
+import com.shopmate.domain.model.ItemNotFoundException;
 import com.shopmate.domain.model.InviteExpiredException;
 import com.shopmate.domain.model.InviteInvalidException;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.NoGroupException;
+import com.shopmate.domain.model.PicnicCredentialsMissingException;
+import com.shopmate.domain.model.PicnicLoginFailedException;
+import com.shopmate.domain.model.PicnicSecondFactorRequiredException;
+import com.shopmate.domain.model.PicnicSessionExpiredException;
+import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.model.UserNotFoundException;
 import com.shopmate.generated.model.ApiError;
 import org.slf4j.Logger;
@@ -30,6 +36,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handleListNotFound(ListNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiError("LIST_NOT_FOUND", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(ItemNotFoundException.class)
+    public ResponseEntity<ApiError> handleItemNotFound(ItemNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiError("ITEM_NOT_FOUND", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(AccessForbiddenException.class)
@@ -86,6 +98,43 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> handleInviteExpired(InviteExpiredException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ApiError("INVITE_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicCredentialsMissingException.class)
+    public ResponseEntity<ApiError> handlePicnicCredentialsMissing(PicnicCredentialsMissingException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_CREDENTIALS_MISSING", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicLoginFailedException.class)
+    public ResponseEntity<ApiError> handlePicnicLoginFailed(PicnicLoginFailedException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_LOGIN_FAILED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicSecondFactorRequiredException.class)
+    public ResponseEntity<ApiError> handlePicnicSecondFactorRequired(PicnicSecondFactorRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_SECOND_FACTOR_REQUIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicSessionExpiredException.class)
+    public ResponseEntity<ApiError> handlePicnicSessionExpired(PicnicSessionExpiredException ex) {
+        // Distinct from PICNIC_UNAVAILABLE on purpose: waiting fixes an outage, but only
+        // re-linking fixes this, and the frontend has to send the user somewhere different.
+        log.warn("Picnic refused a stored session: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ApiError("PICNIC_SESSION_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
+    }
+
+    @ExceptionHandler(PicnicUnavailableException.class)
+    public ResponseEntity<ApiError> handlePicnicUnavailable(PicnicUnavailableException ex) {
+        // Picnic's API is unofficial and can change under us without notice (ADR-0014), so an
+        // outage here is a signal about *them*, not a client mistake — it must leave a trace.
+        // Logged at warn, not error: a third party being down is not our alert-worthy failure.
+        log.warn("Picnic is unavailable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiError("PICNIC_UNAVAILABLE", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

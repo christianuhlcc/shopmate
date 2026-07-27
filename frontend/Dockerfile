@@ -18,5 +18,8 @@ FROM nginx:1.27-alpine
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 EXPOSE 80
+# 127.0.0.1, not localhost: in this image localhost resolves to ::1 first, but the
+# nginx.conf listens on IPv4 only, so the probe got "connection refused" and the
+# container sat permanently unhealthy while serving traffic fine.
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
-  CMD wget -qO- http://localhost/ >/dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1

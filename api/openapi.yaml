@@ -24,6 +24,8 @@ tags:
     description: Invite code issuance and redemption
   - name: Events
     description: Real-time SSE event streaming
+  - name: PicnicExport
+    description: Picnic grocery-export credential linking and per-list export
 
 servers:
   - url: /api
@@ -335,6 +337,237 @@ paths:
         "403":
           $ref: '#/components/responses/Forbidden'
 
+  /users/me/picnic-credentials:
+    put:
+      tags: [PicnicExport]
+      operationId: linkPicnicCredentials
+      summary: Link a Picnic account for grocery export
+      description: |
+        Exchanges the password for a Picnic session and stores that session; the
+        password itself is never persisted. If Picnic rejects the login, responds
+        422 with code PICNIC_LOGIN_FAILED and nothing is stored.
+
+        Picnic normally demands a second factor, in which case the response is
+        `PENDING_SECOND_FACTOR`, an SMS has already been sent, and linking is only
+        complete once `/2fa/verify` succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PicnicCredentialsRequest'
+      responses:
+        "200":
+          description: Password accepted; see status for whether 2FA is still needed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicLinkResult'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [PicnicExport]
+      operationId: unlinkPicnicCredentials
+      summary: Unlink the current user's Picnic account
+      responses:
+        "204":
+          description: Credentials removed
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [PicnicExport]
+      operationId: getPicnicCredentialsStatus
+      summary: Get the current user's Picnic credential link status
+      responses:
+        "200":
+          description: Picnic credential link status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicCredentialsStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/picnic-credentials/2fa/send:
+    post:
+      tags: [PicnicExport]
+      operationId: sendPicnicSecondFactor
+      summary: Re-send the Picnic second-factor SMS code
+      description: |
+        Only valid while the link is PENDING_SECOND_FACTOR; otherwise responds
+        422 with code PICNIC_SECOND_FACTOR_REQUIRED (nothing to resend), or
+        PICNIC_CREDENTIALS_MISSING if no link exists at all.
+      responses:
+        "204":
+          description: Code sent
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /users/me/picnic-credentials/2fa/verify:
+    post:
+      tags: [PicnicExport]
+      operationId: verifyPicnicSecondFactor
+      summary: Complete Picnic linking with the SMS code
+      description: |
+        On success the stored session is replaced with the verified one and the
+        link becomes usable. A wrong or expired code responds 422 with code
+        PICNIC_LOGIN_FAILED and leaves the pending link intact, so the user can
+        retry without re-entering their password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PicnicSecondFactorRequest'
+      responses:
+        "204":
+          description: Second factor verified; the account is now linked
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /lists/{listId}/picnic/suggestions/{itemId}:
+    post:
+      tags: [PicnicExport]
+      operationId: getPicnicItemSuggestions
+      summary: Get Picnic article suggestions for one item
+      description: |
+        One item per call, deliberately. Each Picnic search costs ~2-3 s of
+        server-side render on their side, so searching a whole list up front
+        made the wait grow linearly with list size and burned searches on items
+        the user was going to skip. The client walks items one at a time and
+        prefetches the next while the user decides.
+
+        The item must be active (checked=false, deleted=false) and on the list;
+        anything else responds 404. Requires a linked Picnic credential; if none
+        is linked, responds 422 with code PICNIC_CREDENTIALS_MISSING. If the
+        Picnic API itself is unreachable, responds 502 with code
+        PICNIC_UNAVAILABLE. 403 also covers a group-less caller (code NO_GROUP),
+        same convention as other list endpoints.
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: searchTerm
+          in: query
+          required: false
+          description: |
+            Overrides what is sent to Picnic's search. Omit it and the item's own
+            name is used, which is the right default but often a poor query —
+            item names are freitext, and "test" matches a pregnancy test. The
+            client seeds an editable field with the item name and sends this once
+            the user changes it. Blank is treated as absent.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: Picnic article suggestions for the item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemSuggestions'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
+  /picnic/search-terms:
+    get:
+      tags: [PicnicExport]
+      operationId: getPicnicSearchTerms
+      summary: Autocomplete a Picnic search term
+      description: |
+        Picnic's own autocomplete, proxied. Cheap enough to call while the user
+        types — a response is a few hundred bytes and returns in well under the
+        ~2-3 s a full search costs, because it hits a different endpoint that
+        renders nothing.
+
+        Not list-scoped: it needs the caller's Picnic session and nothing else.
+        Requires a linked Picnic credential; if none is linked, responds 422
+        with code PICNIC_CREDENTIALS_MISSING. If the Picnic API itself is
+        unreachable, responds 502 with code PICNIC_UNAVAILABLE.
+      parameters:
+        - name: term
+          in: query
+          required: true
+          description: The partial term the user has typed so far.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Suggested search terms, most relevant first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PicnicSearchTerms'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
+  /lists/{listId}/picnic/export:
+    post:
+      tags: [PicnicExport]
+      operationId: exportToPicnic
+      summary: Add confirmed article selections to the user's Picnic cart
+      description: |
+        Requires a linked Picnic credential; if none is linked, responds 422
+        with code PICNIC_CREDENTIALS_MISSING. If the Picnic API itself is
+        unreachable, responds 502 with code PICNIC_UNAVAILABLE. 403 also
+        covers a group-less caller (code NO_GROUP), same convention as other
+        list endpoints.
+      parameters:
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+      responses:
+        "200":
+          description: Export result summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResult'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -399,6 +632,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     UnprocessableEntity:
       description: Business rule violation (e.g. list is full, invite invalid/expired)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    BadGateway:
+      description: Upstream provider unavailable (e.g. Picnic API down or blocked)
       content:
         application/json:
           schema:
@@ -667,6 +906,164 @@ components:
         token:
           type: string
           description: Short-lived SSE token (15-min TTL, scoped to listId)
+
+    PicnicCredentialsRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+          description: Never echoed back in any response.
+
+    PicnicSecondFactorRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          writeOnly: true
+          description: The one-time code Picnic sent by SMS.
+
+    PicnicLinkState:
+      type: string
+      enum: [PENDING_SECOND_FACTOR, LINKED]
+      description: |
+        PENDING_SECOND_FACTOR means a session exists but can do nothing except
+        complete 2FA — it is not a usable link.
+
+    PicnicLinkResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/PicnicLinkState'
+
+    PicnicCredentialsStatus:
+      type: object
+      required: [linked]
+      properties:
+        linked:
+          type: boolean
+          description: True only for a fully verified link.
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: Present whenever anything is stored, including a pending link.
+        status:
+          allOf:
+            - $ref: '#/components/schemas/PicnicLinkState'
+          nullable: true
+          description: Absent when nothing is stored at all.
+
+    ArticleSuggestion:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Picnic's product id
+        name:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        priceCents:
+          type: integer
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+          description: e.g. "500g", "Stück"
+
+    PicnicSearchTerms:
+      type: object
+      required: [terms]
+      properties:
+        terms:
+          type: array
+          maxItems: 10
+          description: |
+            Picnic's own autocomplete strings, e.g. for "Milch": h-milch,
+            milchreis, milch laktosefrei, milchschnitte, bio milch.
+          items:
+            type: string
+
+    ItemSuggestions:
+      type: object
+      required: [itemId, itemName, searchTerm, suggestions]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        itemName:
+          type: string
+        searchTerm:
+          type: string
+          description: |
+            The term actually sent to Picnic — the item name unless the request
+            overrode it. Echoed back so a client that has moved on to a newer
+            term can recognise and discard a stale response.
+        suggestions:
+          type: array
+          maxItems: 20
+          description: |
+            Up to 20. Picnic returns ~120 products per search and the response is
+            parsed in full regardless, so a deeper list costs nothing extra — and
+            five was routinely too few to contain the right product.
+          items:
+            $ref: '#/components/schemas/ArticleSuggestion'
+
+    ExportSelection:
+      type: object
+      required: [itemId]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        articleId:
+          type: string
+          nullable: true
+          description: >-
+            Absent or null means the user skipped this item — no cart line
+            is added.
+
+    ExportRequest:
+      type: object
+      required: [selections]
+      properties:
+        selections:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ExportSelection'
+
+    ExportFailure:
+      type: object
+      required: [itemId, reason]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+
+    ExportResult:
+      type: object
+      required: [added, skipped, failures]
+      properties:
+        added:
+          type: integer
+        skipped:
+          type: integer
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExportFailure'
 
     ApiError:
       type: object

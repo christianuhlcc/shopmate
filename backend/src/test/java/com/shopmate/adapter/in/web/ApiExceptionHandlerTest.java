@@ -9,6 +9,9 @@ import com.shopmate.domain.model.InviteInvalidException;
 import com.shopmate.domain.model.ListCapacityExceededException;
 import com.shopmate.domain.model.ListNotFoundException;
 import com.shopmate.domain.model.NoGroupException;
+import com.shopmate.domain.model.PicnicCredentialsMissingException;
+import com.shopmate.domain.model.PicnicLoginFailedException;
+import com.shopmate.domain.model.PicnicUnavailableException;
 import com.shopmate.domain.model.UserNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
@@ -94,6 +97,30 @@ class ApiExceptionHandlerTest {
         var response = handler.handleInviteExpired(new InviteExpiredException("too old"));
         assertThat(response.getStatusCode().value()).isEqualTo(422);
         assertThat(response.getBody().getCode()).isEqualTo("INVITE_EXPIRED");
+    }
+
+    @Test
+    void picnicCredentialsMissingMapsTo422() {
+        var response = handler.handlePicnicCredentialsMissing(
+            new PicnicCredentialsMissingException(UUID.randomUUID()));
+        assertThat(response.getStatusCode().value()).isEqualTo(422);
+        assertThat(response.getBody().getCode()).isEqualTo("PICNIC_CREDENTIALS_MISSING");
+    }
+
+    @Test
+    void picnicLoginFailedMapsTo422() {
+        var response = handler.handlePicnicLoginFailed(new PicnicLoginFailedException("bad password"));
+        assertThat(response.getStatusCode().value()).isEqualTo(422);
+        assertThat(response.getBody().getCode()).isEqualTo("PICNIC_LOGIN_FAILED");
+        assertThat(response.getBody().getMessage()).isEqualTo("bad password");
+    }
+
+    @Test
+    void picnicUnavailableMapsTo502() {
+        var response = handler.handlePicnicUnavailable(new PicnicUnavailableException("picnic is down"));
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody().getCode()).isEqualTo("PICNIC_UNAVAILABLE");
+        assertThat(response.getBody().getMessage()).isEqualTo("picnic is down");
     }
 
     @Test

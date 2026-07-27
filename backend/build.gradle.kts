@@ -52,6 +52,9 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    // Standalone (shaded) artifact avoids a Jetty-version clash with Spring Boot's managed
+    // Jetty BOM, which otherwise breaks WireMock's embedded-server detection at runtime.
+    testImplementation("org.wiremock:wiremock-standalone:3.9.2")
 }
 
 dependencyManagement {

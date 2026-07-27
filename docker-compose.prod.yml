@@ -5,11 +5,16 @@
 #
 # .env (rendered by deploy/aws/deploy-on-instance.sh from SSM Parameter Store)
 # provides: DOMAIN, ECR_REGISTRY, IMAGE_TAG, DB_PASSWORD, GOOGLE_*, JWT_SECRET,
-# DASH0_ENDPOINT, DASH0_AUTH_TOKEN.
+# PICNIC_CREDENTIAL_ENC_KEY, DASH0_ENDPOINT, DASH0_AUTH_TOKEN.
 #
 # BOOTSTRAP_INVITE_CODE is inherited from the base compose file and defaults to
 # empty (disabled). Prod already has a group via the V4 backfill, so it should
 # stay unset here — while set, any signed-in user can create a group.
+#
+# PICNIC_CREDENTIAL_ENC_KEY is also inherited from the base compose file. It
+# must be set to a real secret in prod (ADR-0014) — the base file's default is
+# dev-only and encrypts every user's Picnic credential digest under a
+# published, non-secret key if left unset.
 
 services:
   postgres:

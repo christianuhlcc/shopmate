@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useShoppingList } from '../hooks/useShoppingList'
+import { PicnicCredentialsSheet } from '../../picnic-export/PicnicCredentialsSheet'
+import { PicnicExportSheet } from '../../picnic-export/PicnicExportSheet'
 import { AddItemForm } from './AddItemForm'
 import { ItemList } from './ItemList'
 
@@ -17,6 +20,13 @@ export function ShoppingListPage() {
     setSection,
     moveItemTo,
   } = useShoppingList(listId!)
+  const [activeSheet, setActiveSheet] = useState<'export' | 'credentials' | null>(null)
+
+  // Derived here rather than fetched: the page already holds the authoritative items,
+  // and the backend re-checks each one when its suggestions are requested.
+  const exportableItems = items
+    .filter((item) => !item.checked.value)
+    .map((item) => ({ id: item.id, name: item.name.value }))
 
   if (isLoading) {
     return (
@@ -89,6 +99,27 @@ export function ShoppingListPage() {
             </svg>
           </Link>
           <h1 className="flex-1 text-title font-bold text-ink truncate">{listName}</h1>
+          <button
+            onClick={() => setActiveSheet('export')}
+            aria-label="Export to Picnic"
+            className="pressable min-h-touch min-w-touch rounded-full flex items-center justify-center text-ink hover:bg-marigold-deep/25 focus-visible:outline-ink"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M4 8h12l-1.2 7.2a1 1 0 01-1 .8H6.2a1 1 0 01-1-.8L4 8z"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M7 8V6a3 3 0 016 0v2"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -104,6 +135,21 @@ export function ShoppingListPage() {
       </main>
 
       <AddItemForm addItem={addItem} />
+
+      {activeSheet === 'export' && (
+        <PicnicExportSheet
+          listId={listId!}
+          items={exportableItems}
+          onClose={() => setActiveSheet(null)}
+          onNeedsCredentials={() => setActiveSheet('credentials')}
+        />
+      )}
+      {activeSheet === 'credentials' && (
+        <PicnicCredentialsSheet
+          onClose={() => setActiveSheet(null)}
+          onLinked={() => setActiveSheet('export')}
+        />
+      )}
     </div>
   )
 }
