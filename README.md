@@ -21,7 +21,7 @@ with a UUID tie-break. Ordering uses fractional indexes, so a reorder is always 
 | Database   | PostgreSQL |
 | Contract   | `api/openapi.yaml` — single source of truth; both sides generate typed code from it |
 | Tests      | JUnit 5 / MockMvc / ArchUnit (backend), Vitest + Testing Library (frontend) |
-| Observability | OpenTelemetry (Java agent, Collector, `@dash0/sdk-web` RUM) → [Dash0](https://www.dash0.com) — prod only |
+| Observability | none (container logs on the host; Dash0 removed 2026-11-22, ADR-0011) |
 
 ## Repository layout
 
@@ -32,7 +32,6 @@ frontend/       Vite + React SPA
 docker-compose.yml   full stack: postgres + backend + frontend + nginx edge proxy
 docker-compose.prod.yml  production override: ECR images, TLS, certbot, OTel collector
 nginx/          edge reverse-proxy config used by the compose stack
-observability/  OpenTelemetry Collector config (prod telemetry → Dash0)
 deploy/         Terraform infra + AWS deploy scripts (see docs/aws-deploy.md)
 PLAN.md         implementation plan and phase status
 CLAUDE.md       developer guide (architecture and layer rules)
@@ -243,20 +242,10 @@ cd frontend && npm ci && npm run build
 
 ## Observability
 
-In production, all three signals flow to [Dash0](https://www.dash0.com) through
-an OpenTelemetry Collector sidecar (`observability/otelcol.yaml`); local dev
-exports nothing.
-
-- **Backend** — OTel Java agent (baked into the image, activated only in prod):
-  traces, JVM/HTTP metrics, and trace-correlated logs.
-- **Infrastructure** — nginx/postgres/certbot container logs (fluentd log
-  driver), EC2 host metrics, and per-container docker stats.
-- **Frontend** — real-user monitoring via `@dash0/sdk-web` (web vitals, JS
-  errors, fetch spans linked to backend traces), sent to a same-origin
-  `/telemetry/` path that nginx proxies to the collector — the Dash0 auth
-  token stays server-side, never in the browser bundle.
-
-Setup details: [docs/aws-deploy.md](docs/aws-deploy.md) → Observability.
+Removed 2026-11-22 together with the Dash0 subscription (ADR-0011, superseded): no collector,
+no OTel agent activation, no browser RUM. Container logs stay on the host (`local` log driver,
+rotated): `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs <service>`.
+The OTel Java agent is still baked into the backend image (inert) if observability comes back.
 
 ## API
 

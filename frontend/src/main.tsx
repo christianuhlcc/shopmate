@@ -2,7 +2,6 @@ import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import './index.css'
-import { initObservability } from './observability'
 import { AuthProvider } from './features/auth/AuthContext'
 import { ProtectedRoute } from './features/auth/ProtectedRoute'
 import { RequireGroup } from './features/auth/RequireGroup'
@@ -32,8 +31,6 @@ const ShoppingListPage = lazy(() =>
     default: m.ShoppingListPage,
   })),
 )
-
-initObservability()
 
 const router = createBrowserRouter([
   {
