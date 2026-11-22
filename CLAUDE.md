@@ -121,14 +121,12 @@ chore:  build, config, tooling changes
 
 One meaningful commit per completed phase.
 
-## Observability (prod only)
+## Observability
 
-Traces, metrics, and logs go to Dash0 through an OTel Collector sidecar
-(`observability/otelcol.yaml` + `docker-compose.prod.yml`). Backend = OTel Java
-agent (in the image, activated only in prod); frontend = `@dash0/sdk-web`
-(`src/observability.ts`, enabled only on prod https, exports via the same-origin
-`/telemetry/` nginx proxy); infra logs via fluentd log driver. Local dev exports
-nothing. Details: `docs/aws-deploy.md`.
+Removed 2026-11-22 together with the Dash0 subscription (ADR-0011, superseded): no collector,
+no OTel agent activation, no browser RUM. Container logs stay on the host (`local` log driver,
+rotated): `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs <service>`.
+The OTel Java agent is still baked into the backend image (inert) if observability comes back.
 
 ## Security Notes
 

@@ -1,6 +1,10 @@
 # ADR-0011: Observability via an OTel Collector sidecar to Dash0, prod only
 
-Date: 2026-07-18 · Status: Accepted
+Date: 2026-07-18 · Status: Superseded (2026-11-22)
+
+> **Removed 2026-11-22:** the Dash0 subscription ended, so the collector sidecar, the agent
+> activation, the browser RUM SDK and the Dash0 parameters were removed. Container logs now stay on
+> the host (`local` log driver). Kept below for the record.
 
 ## Context
 

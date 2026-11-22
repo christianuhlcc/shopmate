@@ -107,7 +107,10 @@ jobs:
           test "$status" = Success
 
       - name: Send deployment event to Dash0
-        if: always()
+        # Optional: skipped when the DASH0_OTLP_URL variable is unset, and a
+        # Dash0 failure (e.g. expired token, no subscription) never fails the deploy.
+        if: always() && vars.DASH0_OTLP_URL != ''
+        continue-on-error: true
         # Pinned to a commit SHA, not @main: this step runs in a job holding
         # id-token: write, DASH0_AUTH_TOKEN, and a live AWS session, so a bad
         # commit on that repo's default branch would execute with all of it.

@@ -5,7 +5,7 @@
 #
 # .env (rendered by deploy/aws/deploy-on-instance.sh from SSM Parameter Store)
 # provides: DOMAIN, ECR_REGISTRY, IMAGE_TAG, DB_PASSWORD, GOOGLE_*, JWT_SECRET,
-# PICNIC_CREDENTIAL_ENC_KEY, DASH0_ENDPOINT, DASH0_AUTH_TOKEN.
+# PICNIC_CREDENTIAL_ENC_KEY.
 #
 # BOOTSTRAP_INVITE_CODE is inherited from the base compose file and defaults to
 # empty (disabled). Prod already has a group via the V4 backfill, so it should
@@ -16,18 +16,17 @@
 # dev-only and encrypts every user's Picnic credential digest under a
 # published, non-secret key if left unset.
 
+# Container logs stay on the host (`docker compose logs`). The `local` driver
+# rotates by itself (5 x 20 MB per container); the default json-file never does.
+# (Until 2026-11 logs/traces/metrics went to Dash0 via an OTel collector sidecar,
+# see ADR-0011; removed with the Dash0 subscription.)
+x-logging: &logging
+  driver: local
+
 services:
   postgres:
     restart: unless-stopped
-    # Ship container stdout/stderr to the collector's fluent_forward receiver;
-    # the tag becomes service.name in Dash0 (see observability/otelcol.yaml).
-    logging:
-      driver: fluentd
-      options:
-        fluentd-address: localhost:24224
-        # Don't block container output if the collector is down; buffer instead.
-        fluentd-async: "true"
-        tag: postgres
+    logging: *logging
 
   backend:
     image: ${ECR_REGISTRY}/shopmate/backend:${IMAGE_TAG:-latest}
@@ -36,37 +35,22 @@ services:
     environment:
       FRONTEND_BASE_URL: https://${DOMAIN}
       # 2 GiB host shared with postgres + nginx: cap the JVM at half the
-      # container-visible RAM instead of the default quarter.
-      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50 -javaagent:/otel/opentelemetry-javaagent.jar
-      # OTel Java agent → collector sidecar (traces + metrics + logback logs).
-      # Backend keeps the default json-file log driver: its logs already reach
-      # Dash0 via the agent, structured and trace-correlated.
-      OTEL_SERVICE_NAME: shopmate-backend
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shopmate,service.version=${IMAGE_TAG:-latest},deployment.environment.name=production
-      OTEL_METRIC_EXPORT_INTERVAL: "60000"
+      # container-visible RAM instead of the default quarter. (The OTel Java
+      # agent is still in the image but inert without -javaagent.)
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+    logging: *logging
 
   frontend:
     image: ${ECR_REGISTRY}/shopmate/frontend:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
+    logging: *logging
 
   nginx:
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN}
-    logging:
-      driver: fluentd
-      options:
-        fluentd-address: localhost:24224
-        fluentd-async: "true"
-        tag: nginx
-    # /telemetry/ proxies browser RUM to the collector; nginx resolves the
-    # upstream at startup, so the collector container must exist first.
-    depends_on:
-      otel-collector:
-        condition: service_started
+    logging: *logging
     ports: !override
       - "80:80"
       - "443:443"
@@ -98,35 +82,7 @@ services:
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
-    logging:
-      driver: fluentd
-      options:
-        fluentd-address: localhost:24224
-        fluentd-async: "true"
-        tag: certbot
-
-  # Telemetry gateway: receives OTLP from the backend agent and (via nginx)
-  # the browser SDK, docker logs via fluent_forward, and scrapes host +
-  # container metrics. Exports everything to Dash0.
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.154.0
-    restart: unless-stopped
-    # root: docker_stats needs /var/run/docker.sock, hostmetrics reads /hostfs
-    user: "0:0"
-    environment:
-      DASH0_ENDPOINT: ${DASH0_ENDPOINT}
-      DASH0_AUTH_TOKEN: ${DASH0_AUTH_TOKEN}
-    volumes:
-      - ./observability/otelcol.yaml:/etc/otelcol-contrib/config.yaml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/hostfs:ro
-    ports:
-      # The fluentd log driver connects from the docker daemon on the host,
-      # not from inside the compose network — publish on loopback only.
-      - "127.0.0.1:24224:24224"
-    # Keep the sidecar's share of the 2 GiB host bounded (memory_limiter in
-    # the collector config kicks in at 200 MiB, this is the hard stop).
-    mem_limit: 300m
+    logging: *logging
 
 volumes:
   letsencrypt:

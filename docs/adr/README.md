@@ -16,7 +16,7 @@ decision date.
 | [0008](0008-frontend-stack.md) | Frontend stack: Vite + React 18 + TypeScript + Tailwind | 2026-07-12 |
 | [0009](0009-docker-compose-nginx-deployment-unit.md) | One Docker Compose stack, dev to prod, behind an nginx edge proxy | 2026-07-12 |
 | [0010](0010-prod-single-ec2-terraform-oidc-ssm.md) | Prod on a single EC2 via Terraform; CD with GitHub OIDC + SSM | 2026-07-12 |
-| [0011](0011-observability-otel-collector-dash0.md) | Observability via an OTel Collector sidecar to Dash0, prod only | 2026-07-18 |
+| [0011](0011-observability-otel-collector-dash0.md) | ~~Observability via an OTel Collector sidecar to Dash0, prod only~~ (superseded 2026-11-22: removed) | 2026-07-18 |
 | [0012](0012-section-classification-dictionary-plus-learned-corrections.md) | Section classification via bundled dictionary + learned corrections | 2026-07-19 |
 | [0013](0013-group-tenancy-invite-codes.md) | Group tenancy with single-use invite codes | 2026-07-20 |
 | [0014](0014-picnic-export-beta.md) | Picnic export (beta): Java re-implementation of the unofficial API, per-item top-5 picker | 2026-07-26 |
