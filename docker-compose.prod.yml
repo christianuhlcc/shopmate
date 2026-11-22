@@ -74,6 +74,12 @@ services:
       - ./nginx/nginx.prod.conf.template:/etc/nginx/templates/default.conf.template:ro
       - letsencrypt:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
+      # Logbook (garmin repo): server block + htpasswd, built static site, and
+      # the PUT-only upload inbox (nginx uid 101 writes, the host sync job reads).
+      # Docker creates missing host dirs empty; then the include matches nothing.
+      - /srv/garmin/nginx:/etc/nginx/logbook:ro
+      - /srv/garmin/site:/srv/logbook/site:ro
+      - /srv/garmin/upload:/srv/logbook/upload
     # The image's entrypoint only runs its envsubst template step when the
     # command starts with "nginx" — with a custom command we must render the
     # template ourselves. The reload loop picks up certs renewed by certbot.

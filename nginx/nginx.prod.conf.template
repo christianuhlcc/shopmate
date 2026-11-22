@@ -3,6 +3,11 @@
 # environment variable; nginx runtime vars like $http_host pass through).
 # Mounted as /etc/nginx/templates/default.conf.template (docker-compose.prod.yml).
 
+# Other sites on this host (currently the logbook, owned by the separate garmin repo:
+# deploy/server/logbook.nginx.conf, installed into /srv/garmin/nginx/ by its setup script
+# only once its certificate exists). An empty glob is fine: no file, no extra site.
+include /etc/nginx/logbook/*.conf;
+
 upstream backend {
     server backend:8080;
 }
