@@ -1,6 +1,6 @@
 # ADR-0005: Backend stack — Java 21 + Spring Boot 3, PostgreSQL + JPA + Flyway
 
-Date: 2026-04-28 · Status: Accepted
+Date: 2026-04-28 · Status: Accepted · Amended 2026-11-22: Spring Boot 3 → 4 (same decision, major-version upgrade)
 
 ## Context
 

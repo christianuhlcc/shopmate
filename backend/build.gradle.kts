@@ -2,9 +2,9 @@ import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
 
 plugins {
     java
-    id("org.springframework.boot") version "3.5.16"
+    id("org.springframework.boot") version "4.2.0"
     id("io.spring.dependency-management") version "1.1.7"
-    id("org.openapi.generator") version "7.9.0"
+    id("org.openapi.generator") version "7.27.0"
     jacoco
 }
 
@@ -23,17 +23,19 @@ repositories {
 
 dependencies {
     // Spring Boot starters
-    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-security")
-    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
-    implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+    implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
+    implementation("org.springframework.boot:spring-boot-starter-security-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 
     // Database
     runtimeOnly("org.postgresql:postgresql")
-    implementation("org.flywaydb:flyway-core")
+    // Boot 4 moved Flyway auto-configuration into its own module; flyway-core alone
+    // no longer runs migrations on startup.
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-database-postgresql")
 
     // JWT
@@ -74,7 +76,9 @@ openApiGenerate {
     configOptions.set(
         mapOf(
             "interfaceOnly" to "true",
-            "useSpringBoot3" to "true",
+            "useSpringBoot4" to "true",
+            "useJackson3" to "true",
+            "useJspecify" to "true",
             "useTags" to "true",
             "dateLibrary" to "java8",
             "openApiNullable" to "false",

@@ -7,8 +7,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.jwt.JwtClaimNames;
-import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -17,7 +20,6 @@ import io.jsonwebtoken.security.Keys;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -61,6 +63,10 @@ public class SecurityConfig {
      * Rejection is by audience rather than a required allow-list value so that
      * session JWTs already issued — they carry no {@code aud} and live 24 h —
      * keep working; this must not sign every user out on deploy.
+     *
+     * Not a {@code JwtClaimValidator}: since Spring Security 7 it fails a token
+     * whose claim is absent before the predicate runs, which rejects exactly
+     * those audience-less session JWTs.
      */
     @Bean
     public JwtDecoder jwtDecoder() {
@@ -68,8 +74,18 @@ public class SecurityConfig {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
             JwtValidators.createDefault(),
-            new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
-                aud -> aud == null || !aud.contains(SseTokenService.SSE_AUDIENCE))));
+            rejectSseAudience()));
         return decoder;
+    }
+
+    static OAuth2TokenValidator<Jwt> rejectSseAudience() {
+        OAuth2TokenValidatorResult sseToken = OAuth2TokenValidatorResult.failure(new OAuth2Error(
+            OAuth2ErrorCodes.INVALID_TOKEN, "SSE stream tokens are not valid bearer tokens", null));
+        return jwt -> {
+            var aud = jwt.getAudience();
+            return aud != null && aud.contains(SseTokenService.SSE_AUDIENCE)
+                ? sseToken
+                : OAuth2TokenValidatorResult.success();
+        };
     }
 }

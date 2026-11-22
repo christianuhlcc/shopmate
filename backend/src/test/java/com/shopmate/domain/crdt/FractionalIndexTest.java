@@ -1,13 +1,11 @@
 package com.shopmate.domain.crdt;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,23 +28,19 @@ class FractionalIndexTest {
     private static final JsonNode VECTORS = loadVectors();
 
     private static JsonNode loadVectors() {
-        try {
-            Path dir = Path.of("").toAbsolutePath();
-            for (int i = 0; i < 8; i++) {
-                Path candidate = dir.resolve("shared/fractional-index-vectors.json");
-                if (Files.exists(candidate)) {
-                    return new ObjectMapper().readTree(candidate.toFile());
-                }
-                Path parent = dir.getParent();
-                if (parent == null) break;
-                dir = parent;
+        Path dir = Path.of("").toAbsolutePath();
+        for (int i = 0; i < 8; i++) {
+            Path candidate = dir.resolve("shared/fractional-index-vectors.json");
+            if (Files.exists(candidate)) {
+                return new ObjectMapper().readTree(candidate.toFile());
             }
-            throw new IllegalStateException(
-                "could not locate shared/fractional-index-vectors.json above "
-                    + Path.of("").toAbsolutePath());
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            Path parent = dir.getParent();
+            if (parent == null) break;
+            dir = parent;
         }
+        throw new IllegalStateException(
+            "could not locate shared/fractional-index-vectors.json above "
+                + Path.of("").toAbsolutePath());
     }
 
     private static List<JsonNode> vectorList(String field) {
@@ -70,25 +64,25 @@ class FractionalIndexTest {
     @ParameterizedTest
     @MethodSource("appendVectors")
     void appendMatchesSharedVector(JsonNode vector) {
-        String last = vector.get("last").isNull() ? null : vector.get("last").asText();
-        String expected = vector.get("expect").asText();
+        String last = vector.get("last").isNull() ? null : vector.get("last").asString();
+        String expected = vector.get("expect").asString();
         assertThat(FractionalIndex.append(last)).isEqualTo(expected);
     }
 
     @ParameterizedTest
     @MethodSource("betweenVectors")
     void betweenMatchesSharedVector(JsonNode vector) {
-        String before = vector.get("before").isNull() ? null : vector.get("before").asText();
-        String after = vector.get("after").isNull() ? null : vector.get("after").asText();
-        String expected = vector.get("expect").asText();
+        String before = vector.get("before").isNull() ? null : vector.get("before").asString();
+        String after = vector.get("after").isNull() ? null : vector.get("after").asString();
+        String expected = vector.get("expect").asString();
         assertThat(FractionalIndex.between(before, after)).isEqualTo(expected);
     }
 
     @ParameterizedTest
     @MethodSource("tooTightVectors")
     void betweenThrowsForTooTightSharedVector(JsonNode vector) {
-        String before = vector.get("before").asText();
-        String after = vector.get("after").asText();
+        String before = vector.get("before").asString();
+        String after = vector.get("after").asString();
         assertThatThrownBy(() -> FractionalIndex.between(before, after))
             .isInstanceOf(IllegalArgumentException.class);
     }
@@ -96,10 +90,10 @@ class FractionalIndexTest {
     @Test
     void reproducesPinnedNarrowingHiBisectionChain() {
         JsonNode chain = VECTORS.get("bisectionNarrowingHi");
-        String lo = chain.get("lo").asText();
-        String hi = chain.get("initialHi").asText();
+        String lo = chain.get("lo").asString();
+        String hi = chain.get("initialHi").asString();
         for (JsonNode expectedKeyNode : chain.get("keys")) {
-            String expectedKey = expectedKeyNode.asText();
+            String expectedKey = expectedKeyNode.asString();
             String mid = FractionalIndex.between(lo, hi);
             assertThat(mid).isEqualTo(expectedKey).isGreaterThan(lo).isLessThan(hi);
             hi = mid;
@@ -109,10 +103,10 @@ class FractionalIndexTest {
     @Test
     void reproducesPinnedNarrowingLoBisectionChain() {
         JsonNode chain = VECTORS.get("bisectionNarrowingLo");
-        String lo = chain.get("initialLo").asText();
-        String hi = chain.get("hi").asText();
+        String lo = chain.get("initialLo").asString();
+        String hi = chain.get("hi").asString();
         for (JsonNode expectedKeyNode : chain.get("keys")) {
-            String expectedKey = expectedKeyNode.asText();
+            String expectedKey = expectedKeyNode.asString();
             String mid = FractionalIndex.between(lo, hi);
             assertThat(mid).isEqualTo(expectedKey).isGreaterThan(lo).isLessThan(hi);
             lo = mid;

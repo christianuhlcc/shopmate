@@ -1,8 +1,8 @@
 package com.shopmate.adapter.out.picnic;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.shopmate.domain.model.ArticleSuggestion;
 import com.shopmate.domain.model.PicnicCredentials;
 import com.shopmate.domain.model.PicnicLoginFailedException;
@@ -299,7 +299,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
 
         try {
             return objectMapper.readTree(bodyOf(response));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new PicnicUnavailableException(
                 "Picnic " + operation + " returned a malformed JSON body", e);
         }
@@ -334,7 +334,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new PicnicUnavailableException("Failed to build Picnic request body", e);
         }
     }
@@ -349,7 +349,7 @@ public class PicnicHttpAdapter implements PicnicClientPort {
         }
         try {
             return objectMapper.readTree(body);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return null;
         }
     }
@@ -367,16 +367,16 @@ public class PicnicHttpAdapter implements PicnicClientPort {
      */
     private static String errorMessage(JsonNode body) {
         if (body.has("error_code")) {
-            return body.get("error_code").asText();
+            return body.get("error_code").asString();
         }
         // Non-null: hasErrorIndicator only lets a body through if it has "error_code" (returned
         // above) or "error".
         JsonNode error = body.get("error");
         if (error.isObject()) {
             JsonNode code = error.get("code");
-            return code != null ? code.asText() : "unknown error";
+            return code != null ? code.asString() : "unknown error";
         }
-        return error.asText();
+        return error.asString();
     }
 
     /**
@@ -391,11 +391,11 @@ public class PicnicHttpAdapter implements PicnicClientPort {
      * a generic sniff picks them up as phantom results.
      */
     private void collectSellingUnits(JsonNode node, List<ArticleSuggestion> results) {
-        if (node == null || !node.isContainerNode() || results.size() >= MAX_SEARCH_RESULTS) {
+        if (node == null || !node.isContainer() || results.size() >= MAX_SEARCH_RESULTS) {
             return;
         }
 
-        if (node.isObject() && SELLING_UNIT_TILE_TYPE.equals(node.path("type").asText(null))) {
+        if (node.isObject() && SELLING_UNIT_TILE_TYPE.equals(node.path("type").asString(null))) {
             ArticleSuggestion suggestion = toArticleSuggestion(node.get("sellingUnit"));
             if (suggestion != null) {
                 results.add(suggestion);
@@ -440,10 +440,12 @@ public class PicnicHttpAdapter implements PicnicClientPort {
     }
 
     private static String textOrNull(JsonNode node) {
-        return (node != null && node.isTextual()) ? node.asText() : null;
+        return (node != null && node.isString()) ? node.asString() : null;
     }
 
     private static Integer intOrNull(JsonNode node) {
-        return (node != null && node.isNumber()) ? node.intValue() : null;
+        // Not node.intValue(): Jackson 3 throws on a fractional value where Jackson 2
+        // truncated, and one odd price must not fail the whole search.
+        return (node != null && node.isNumber()) ? node.numberValue().intValue() : null;
     }
 }
