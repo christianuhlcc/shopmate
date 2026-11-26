@@ -65,10 +65,12 @@ if ! docker run --rm -v shopmate_letsencrypt:/etc/letsencrypt alpine \
     --agree-tos --no-eff-email --non-interactive
 fi
 
-compose pull backend frontend
+# nginx too: its tag (e.g. 1.30-alpine) moves with patch releases, and a tag
+# that is never pulled again silently stops getting security fixes.
+compose pull backend frontend nginx
 compose up -d --remove-orphans
 
-# nginx's own image rarely changes, but its config is a bind-mounted template
+# nginx's config is a bind-mounted template
 # rendered by envsubst once at container start — Compose has no way to see
 # that the mounted file's *contents* changed, so it never recreates the
 # container on a config-only edit. Force it every deploy (learned 2026-07-21:

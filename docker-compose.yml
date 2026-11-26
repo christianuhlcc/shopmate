@@ -44,7 +44,10 @@ services:
       dockerfile: frontend/Dockerfile
 
   nginx:
-    image: nginx:1.27-alpine
+    # Stable branch (security fixes until the next stable, usually each April:
+    # bump to 1.32 then). 1.27 was mainline and got no fixes after mid-2025.
+    # deploy-on-instance.sh pulls it on every deploy for patch releases.
+    image: nginx:1.30-alpine
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
