@@ -1,6 +1,6 @@
 package com.shopmate.adapter.out.picnic;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.shopmate.domain.model.ArticleSuggestion;
 import com.shopmate.domain.model.PicnicCredentials;
@@ -390,6 +390,20 @@ class PicnicHttpAdapterTest {
         List<ArticleSuggestion> results = adapter.searchArticles(SESSION, "Milch");
 
         assertThat(results).extracting(ArticleSuggestion::id).containsExactly("s1");
+    }
+
+    @Test
+    void searchArticlesTruncatesAFractionalPriceInsteadOfFailing() {
+        stubSearch("""
+            {"layout": {"children": [
+              {"type": "SELLING_UNIT_TILE", "sellingUnit": {"id": "s1", "name": "Odd", "display_price": 199.5}}
+            ]}}
+            """);
+
+        List<ArticleSuggestion> results = adapter.searchArticles(SESSION, "Milch");
+
+        assertThat(results).extracting(ArticleSuggestion::id).containsExactly("s1");
+        assertThat(results.get(0).priceCents()).isEqualTo(199);
     }
 
     @Test

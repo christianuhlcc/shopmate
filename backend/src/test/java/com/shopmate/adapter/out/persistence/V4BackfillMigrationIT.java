@@ -4,7 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -32,7 +32,7 @@ class V4BackfillMigrationIT {
     static final UUID DEFAULT_GROUP_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16")
         .withDatabaseName("shopmate_v4_test")
         .withUsername("test")
         .withPassword("test");

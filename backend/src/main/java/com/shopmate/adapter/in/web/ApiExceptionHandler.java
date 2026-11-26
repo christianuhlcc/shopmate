@@ -52,7 +52,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ListCapacityExceededException.class)
     public ResponseEntity<ApiError> handleListCapacityExceeded(ListCapacityExceededException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("LIST_CAPACITY_EXCEEDED", ex.getMessage(), OffsetDateTime.now()));
     }
 
@@ -90,31 +90,31 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(InviteInvalidException.class)
     public ResponseEntity<ApiError> handleInviteInvalid(InviteInvalidException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("INVITE_INVALID", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(InviteExpiredException.class)
     public ResponseEntity<ApiError> handleInviteExpired(InviteExpiredException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("INVITE_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(PicnicCredentialsMissingException.class)
     public ResponseEntity<ApiError> handlePicnicCredentialsMissing(PicnicCredentialsMissingException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("PICNIC_CREDENTIALS_MISSING", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(PicnicLoginFailedException.class)
     public ResponseEntity<ApiError> handlePicnicLoginFailed(PicnicLoginFailedException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("PICNIC_LOGIN_FAILED", ex.getMessage(), OffsetDateTime.now()));
     }
 
     @ExceptionHandler(PicnicSecondFactorRequiredException.class)
     public ResponseEntity<ApiError> handlePicnicSecondFactorRequired(PicnicSecondFactorRequiredException ex) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("PICNIC_SECOND_FACTOR_REQUIRED", ex.getMessage(), OffsetDateTime.now()));
     }
 
@@ -123,7 +123,7 @@ public class ApiExceptionHandler {
         // Distinct from PICNIC_UNAVAILABLE on purpose: waiting fixes an outage, but only
         // re-linking fixes this, and the frontend has to send the user somewhere different.
         log.warn("Picnic refused a stored session: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                 .body(new ApiError("PICNIC_SESSION_EXPIRED", ex.getMessage(), OffsetDateTime.now()));
     }
 

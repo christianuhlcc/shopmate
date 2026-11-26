@@ -39,7 +39,10 @@ shopmate:
 server:
   port: 8080
   # Honor X-Forwarded-* from the reverse proxy so OAuth2 redirect URIs use the public host
-  forward-headers-strategy: framework
+  request:
+    header:
+      forwarded:
+        strategy: framework
 
 management:
   endpoints:

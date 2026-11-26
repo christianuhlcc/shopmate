@@ -1,6 +1,6 @@
 package com.shopmate.adapter.in.sse;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.shopmate.domain.model.ItemChange;
 import com.shopmate.domain.model.ItemField;
 import com.shopmate.generated.model.ItemChangeEvent;

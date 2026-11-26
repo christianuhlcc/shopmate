@@ -132,6 +132,22 @@ class SecurityServicesTest {
     }
 
     @Test
+    void resourceServerAcceptsATokenWhoseAudienceIsNotTheSseAudience() {
+        JwtDecoder decoder = new SecurityConfig(null, SECRET).jwtDecoder();
+        SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+        long now = System.currentTimeMillis();
+        String token = Jwts.builder()
+            .subject("someone")
+            .audience().add("some-other-audience").and()
+            .issuedAt(new Date(now))
+            .expiration(new Date(now + 60_000))
+            .signWith(key, Jwts.SIG.HS256)
+            .compact();
+
+        assertThat(decoder.decode(token).getSubject()).isEqualTo("someone");
+    }
+
+    @Test
     void sseEndpointRejectsASessionJwt() {
         var service = new SseTokenService(SECRET);
 
