@@ -51,18 +51,13 @@ dependencies {
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
-    testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
+    // Testcontainers 2 (version managed by Spring Boot 4) — artifacts are now testcontainers-*.
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     // Standalone (shaded) artifact avoids a Jetty-version clash with Spring Boot's managed
     // Jetty BOM, which otherwise breaks WireMock's embedded-server detection at runtime.
     testImplementation("org.wiremock:wiremock-standalone:3.9.2")
-}
-
-dependencyManagement {
-    imports {
-        mavenBom("org.testcontainers:testcontainers-bom:1.21.4")
-    }
 }
 
 val openApiOutputDir = layout.buildDirectory.dir("generated/openapi").get().asFile.absolutePath
