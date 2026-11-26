@@ -32,12 +32,19 @@ services:
     image: ${ECR_REGISTRY}/shopmate/backend:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
+    # Small-footprint JVM for a two-user app (ADR-0016): hard container cap,
+    # fixed 256 MB heap (live set is ~50-100 MB), Serial GC, C1-only JIT.
+    # Measured 362 MB peak under ~40x real load vs 537 MB (and growing) before.
+    # (The OTel Java agent is still in the image but inert without -javaagent.)
+    mem_limit: 450m
+    memswap_limit: 450m   # no swap on top: a real cap, OOM-restart instead of swapping
     environment:
       FRONTEND_BASE_URL: https://${DOMAIN}
-      # 2 GiB host shared with postgres + nginx: cap the JVM at half the
-      # container-visible RAM instead of the default quarter. (The OTel Java
-      # agent is still in the image but inert without -javaagent.)
-      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=50
+      JAVA_TOOL_OPTIONS: >-
+        -XX:+UseSerialGC -Xmx256m -Xss512k
+        -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=64m
+        -Xlog:gc:stdout
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
     logging: *logging
 
   frontend:

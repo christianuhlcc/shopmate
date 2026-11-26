@@ -27,6 +27,29 @@ The instance (`i-0fda569fb7ada49b5`, t4g.small, eu-central-1b) hosts shopmate an
 The whole account would go from about $24.50 to about $13 per normal month including VAT. The rest is public IPv4 at
 $3.72, EBS 20 GB at $1.90 and one Route 53 zone at $0.50. The domain is $16/year, billed in November.
 
+### Backend memory (ADR-0016, measured 2026-11-26)
+
+The RAM numbers above are from before ADR-0016. That ADR gives the backend a 450 MB container cap, Serial GC, a
+256 MB heap, C1-only JIT and a DB pool of 4. A local test used the prod image at about 40× real load (80 req/s, 2 SSE
+streams, 5 min):
+
+| | Before | After ADR-0016 |
+|---|---|---|
+| Backend RSS idle | 320 MB | 276 MB |
+| Backend RSS under load | 537 MB, still rising | 362 MB, hard cap 450 MB |
+| Live heap after GC (max) | 77 MB | 105 MB |
+| Postgres connections | 11 | 5 |
+
+What this means for the choice:
+- **t4g.small Spot (the plan):** RAM is no concern at all. More than 1 GB stays free for the logbook sync and
+  dashboard rebuild.
+- **t4g.micro (1 GiB, Spot about $3.50/month):** it now fits on paper. Backend about 280–360 MB, Postgres about
+  40 MB, nginx/certbot/frontend about 20 MB, and the OS, Docker and SSM agent about 250 MB leave roughly 250 MB plus
+  1 GB of swap. The garmin-sync job may use up to 700 MB (systemd cap) and its real peak was never measured, so the
+  micro stays a stretch goal. To try it, first read the prod GC log for a few weeks (`docker logs shopmate-backend-1 |
+  grep Pause`) and measure one sync (`/usr/bin/time -v`). Then change `var.instance_type`. On on-demand that's an
+  in-place stop/start; on Spot, check that `terraform plan` doesn't want to replace the instance.
+
 ## How Spot behaves here
 
 - Use a **persistent** spot request with interruption behaviour **stop**. On interruption AWS gives 2 minutes' warning,
