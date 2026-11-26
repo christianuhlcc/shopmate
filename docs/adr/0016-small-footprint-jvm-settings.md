@@ -1,6 +1,6 @@
 # ADR-0016: Small-footprint JVM settings for the prod backend
 
-Date: 2026-11-26 · Status: Proposed
+Date: 2026-11-26 · Status: Accepted
 
 ## Context
 

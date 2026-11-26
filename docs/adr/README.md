@@ -21,4 +21,4 @@ decision date.
 | [0013](0013-group-tenancy-invite-codes.md) | Group tenancy with single-use invite codes | 2026-07-20 |
 | [0014](0014-picnic-export-beta.md) | Picnic export (beta): Java re-implementation of the unofficial API, per-item top-5 picker | 2026-07-26 |
 | [0015](0015-generic-grocery-export-port.md) | Generic `GroceryExportPort` for multiple grocery-export adapters — **draft, on hold** | 2026-07-26 |
-| [0016](0016-small-footprint-jvm-settings.md) | Small-footprint JVM settings for the prod backend (Serial GC, 256 MB heap, C1-only, 450 MB cap) — **proposed** | 2026-11-26 |
+| [0016](0016-small-footprint-jvm-settings.md) | Small-footprint JVM settings for the prod backend (Serial GC, 256 MB heap, C1-only, 450 MB cap) | 2026-11-26 |
