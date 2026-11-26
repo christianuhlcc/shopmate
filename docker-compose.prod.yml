@@ -37,6 +37,7 @@ services:
     # Measured 362 MB peak under ~40x real load vs 537 MB (and growing) before.
     # (The OTel Java agent is still in the image but inert without -javaagent.)
     mem_limit: 450m
+    memswap_limit: 450m   # no swap on top: a real cap, OOM-restart instead of swapping
     environment:
       FRONTEND_BASE_URL: https://${DOMAIN}
       JAVA_TOOL_OPTIONS: >-

@@ -38,15 +38,19 @@ Method:
 | Postgres connections | 11 | 5 | 5 |
 
 The baseline's heap stayed flat at 261 MB committed while RSS kept climbing, so most of its growth was outside the
-heap: JIT compiler memory, code cache and metaspace. All three runs had one 6–10 s latency outlier, and runs A and B
-had 1 and 7 client-side connection errors with no server-side error logged. Both look like artifacts of the local port
-forwarding, not of the JVM settings.
+heap: JIT compiler memory, code cache and metaspace. All three runs had one 6–10 s latency outlier. Clients saw
+connection errors without an HTTP status: 1 in A, 7 in B, 0 in C, against about 22–24k requests per run, with no
+error in the server log. They weren't classified: the load script only started recording the exception text after
+run B. C has the same settings as B except the JIT and had none, so C1-only may play a part under this load. At real
+traffic (two users) it doesn't matter.
 
 ## Decision
 
 In `docker-compose.prod.yml`, the backend gets:
 
-- **`mem_limit: 450m`**: a hard ceiling for the container. The JVM also sizes itself from this limit.
+- **`mem_limit: 450m` + `memswap_limit: 450m`**: a hard ceiling for the container, RAM and swap together. Without
+  `memswap_limit`, Docker would allow another 450 MB of swap on top, and the host has a 1 GB swapfile. The JVM also
+  sizes itself from this limit.
 - **`-XX:+UseSerialGC`**: no G1 overhead. Young-GC pauses were 1–10 ms under the test load.
 - **`-Xmx256m`**: the live set is 50–105 MB even at about 40× real load, so 256 MB leaves 2.5× headroom.
 - **`-Xss512k`**: about 45 threads, so smaller stacks are a small, safe saving.
